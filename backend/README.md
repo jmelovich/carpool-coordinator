@@ -12,4 +12,4 @@ To set up the conda environment, make sure Anaconda/Miniconda is installed, then
 
 This environment.yml file will be updated as needed, to update your environment navigate to the backend/ folder and run:
 
-``conda env update --name carpool_webapp_backend --file environment.yml --prune``
+``conda env update --name carpool_coordinator --file environment.yml --prune``
