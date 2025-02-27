@@ -1,0 +1,28 @@
+name: carpool_webapp_backend
+channels:
+  - defaults
+  - https://repo.anaconda.com/pkgs/main
+  - https://repo.anaconda.com/pkgs/r
+dependencies:
+  - blinker=1.9.0=py311hecd8cb5_0
+  - bzip2=1.0.8=h6c40b1e_6
+  - ca-certificates=2024.12.31=hecd8cb5_0
+  - click=8.1.7=py311hecd8cb5_0
+  - flask=3.1.0=py311hecd8cb5_0
+  - itsdangerous=2.2.0=py311hecd8cb5_0
+  - jinja2=3.1.5=py311hecd8cb5_0
+  - libffi=3.4.4=hecd8cb5_1
+  - markupsafe=3.0.2=py311h46256e1_0
+  - ncurses=6.4=hcec6c5f_0
+  - openssl=3.0.15=h46256e1_0
+  - pip=25.0=py311hecd8cb5_0
+  - python=3.11.11=h4d6d9e5_0
+  - readline=8.2=hca72f7f_0
+  - setuptools=75.8.0=py311hecd8cb5_0
+  - sqlite=3.45.3=h6c40b1e_0
+  - tk=8.6.14=h4d00af3_0
+  - tzdata=2025a=h04d1e81_0
+  - werkzeug=3.1.3=py311hecd8cb5_0
+  - wheel=0.45.1=py311hecd8cb5_0
+  - xz=5.6.4=h46256e1_1
+  - zlib=1.2.13=h4b97444_1
