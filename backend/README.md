@@ -2,7 +2,7 @@
 
 This folder is where the backend portion of this project will be relegated.
 
-The backend server will be built using FastAPI, a python library. To simplify the set up of this, I created a conda environment with the necessary dependencies. Its important to use this environment. 
+The backend server will be built using Flask, a python library. To simplify the set up of this, I created a conda environment with the necessary dependencies. Its important to use this environment. 
 
 ## Environment Setup
 
