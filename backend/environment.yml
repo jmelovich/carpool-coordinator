@@ -2,21 +2,19 @@ name: carpool_coordinator
 channels:
   - defaults
 dependencies:
-  - bzip2=1.0.8=h2bbff1b_6
-  - ca-certificates=2024.12.31=haa95532_0
-  - libffi=3.4.4=hd77b12b_1
-  - openssl=3.0.15=h827c3e9_0
-  - pip=25.0=py310haa95532_0
-  - python=3.10.16=h4607a30_1
-  - setuptools=75.8.0=py310haa95532_0
-  - sqlite=3.45.3=h2bbff1b_0
-  - tk=8.6.14=h0416ee5_0
-  - tzdata=2025a=h04d1e81_0
-  - vc=14.40=haa95532_2
-  - vs2015_runtime=14.42.34433=h9531ae6_2
-  - wheel=0.45.1=py310haa95532_0
-  - xz=5.4.6=h8cc25b3_1
-  - zlib=1.2.13=h8cc25b3_1
+  - bzip2=1.0.8
+  - ca-certificates=2024.12.31
+  - libffi=3.4.4
+  - openssl=3.0.15
+  - pip=25.0
+  - python=3.10.16
+  - setuptools=75.8.0
+  - sqlite=3.45.3
+  - tk=8.6.14
+  - tzdata=2025a
+  - wheel=0.45.1
+  - xz=5.4.6
+  - zlib=1.2.13
   - pip:
       - annotated-types==0.7.0
       - anyio==4.8.0

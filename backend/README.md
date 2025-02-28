@@ -10,6 +10,8 @@ To set up the conda environment, make sure Anaconda/Miniconda is installed, then
 
 ``conda env create -f environment.yml``
 
+``conda activate carpool_coordinator``
+
 This environment.yml file will be updated as needed, to update your environment navigate to the backend/ folder and run:
 
 ``conda env update --name carpool_coordinator --file environment.yml --prune``
