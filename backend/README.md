@@ -19,9 +19,9 @@ This environment.yml file will be updated as needed, to update your environment 
 
 ## Using The Backend
 
-Once the conda environment is activated, run the ```run.py``` script to start the local server.
+Once the conda environment is activated, run the ```run.py``` script to start the local server. `python run.py` works for this purpose.
 
-For the sake of testing the backend, I have provided some CURL commands that demonstrate how to use it and what it expects.
+For the sake of testing the backend, I have provided some CURL commands that demonstrate how to use it and what it expects. Try running these using Git Bash.
 
 Health Check:
 
