@@ -8,6 +8,7 @@ from flask_jwt_extended import (
     create_access_token, get_jwt_identity,
     jwt_required
 )
+from app.helper import is_valid_email
 
 # Health check routes
 @app.route('/')
@@ -31,6 +32,10 @@ def register():
     # Check if username already exists
     if get_user_by_username(data['username']):
         return jsonify({'error': 'Username already taken'}), 409
+    
+    # check if valid email format
+    if is_valid_email(data['email']) == False:
+        return jsonify({'error': 'Invalid email format'}), 400
     
     # Check if email already exists
     if get_user_by_email(data['email']):
