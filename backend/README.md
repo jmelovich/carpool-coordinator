@@ -103,3 +103,34 @@ curl -X GET http://localhost:5000/api/users/<USER_ID> \
 ## Viewing The Database
 
 The database is stored as 'carpool.db' in the 'backend/app' folder (as a SQLite Database). If need be, you can use a tool to view this database directly. I (Luke) use a VSCode extension called [`SQLite Viewer`](https://marketplace.visualstudio.com/items?itemName=qwtel.sqlite-viewer), which lets me view .db files within VSCode- but other options work too. Note this is only useful for development/debugging purposes, and any information that needs to be gotten from the database by the site needs to be implemented via the backend API.
+
+### Debugging using SQLite
+To use SQL commands to manipulate your local 'carpool.db', open Anaconda Prompt and head to the directory where 'carpool.db' is (/backend /app ). Then type `sqlite3`, and you will have launched SQLite! (Works regardless if you're in the environment on conda). Once in SQLite and the database, SQL statements work as normal (don't forget to end with a `;`). SQLite is also useful to manipulate rows, columns, and cells as the SQLite Viewer extension doesn't allow it while using it for free.
+
+To quit SQlite type `.quit`
+
+To open the database for manipulation type `.open carpool.db`
+
+To open documentation on your CLI type `.help`
+
+For further commands and examples on how to use SQLite/SQL see [`here`](https://www.sqlitetutorial.net/sqlite-commands/)
+
+Personal (Ed's) favorite SQL statements:
+
+Deletes a row where id is 1
+```
+DELETE FROM users 
+WHERE id = 1;
+```
+
+Gets all the data from the table of users (You may also just refresh carpool.db to see the latest changes using SQLite Viewer)
+```
+SELECT * FROM users;
+```
+
+Sets id to 1 where username is "newuser"
+```
+UPDATE users
+set id = 1
+WHERE username = "newuser";
+```
