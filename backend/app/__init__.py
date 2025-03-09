@@ -2,11 +2,15 @@ from flask import Flask, jsonify
 from config import Config
 from flask_bcrypt import Bcrypt
 from flask_jwt_extended import JWTManager
+from flask_cors import CORS
 import datetime
 import os
 
 app = Flask(__name__)
 app.config.from_object(Config)
+
+# Enable CORS for all routes
+CORS(app, resources={r"/*": {"origins": "*"}})
 
 # Set a secure secret key for JWT
 app.config['JWT_SECRET_KEY'] = os.environ.get('JWT_SECRET_KEY', 'SECRET_KEY_HERE')  # this should be changed later
