@@ -1,6 +1,4 @@
 import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
 import './App.css'
 
 function App() {
@@ -44,17 +42,25 @@ function App() {
   return (
     <div className="App">
       <h1>Carpool Coordinator Sign Up</h1>
-      <form onSubmit={handleSubmit}>
-        <input type="text" name="username" placeholder="Username" value={formData.username} onChange={handleChange} required>
-        </input>
-        <input type="text" name="email" placeholder="Email" value={formData.email} onChange={handleChange} required>
-        </input>
-        <input type="text" name="password" placeholder="Password" value={formData.password} onChange={handleChange} required>
-        </input>
-        <button type="submit">
-          Sign Up
-        </button>
-      </form>
+      <div className="Login-border">
+        <form onSubmit={handleSubmit}>
+          <label className="largeLabel" htmlFor="username" >
+            <input className="inputBox" type="text" name="username" id="username" placeholder="Username" value={formData.username} onChange={handleChange} required>
+            </input> 
+          </label>
+          <label className="largeLabel" htmlFor="email">
+            <input className="inputBox" type="text" name="email" id="email" placeholder="Email" value={formData.email} onChange={handleChange} required>
+            </input> 
+          </label>
+          <label className="largeLabel" htmlFor="password">
+            <input className="inputBox" type="text" name="password" id="password" placeholder="Password" value={formData.password} onChange={handleChange} required>
+            </input> 
+          </label>
+          <button type="submit">
+            Sign Up
+          </button>
+        </form>
+        </div>
     </div >
   )
 }
