@@ -42,6 +42,7 @@ function App() {
 
   return (
     <div className="App">
+      // I'll edit colors fully later, once functionality is down, I'll need to mess with the css more for this format
       <h1 className="text-4xl font-bold text-[#2A9D8F] mb-6 font-sans">
         Welcome to Carpool Coordinator!
       </h1>
