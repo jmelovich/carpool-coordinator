@@ -9,60 +9,152 @@ function App() {
     password: ''
   });
 
+  const [showLogin, setShowLogin] = useState(false);
+  const [showSignup, setShowSignup] = useState(false);
+
   // for storing input changes to form data
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
-  const handleSubmit = async (e) => {
+  const handleSignup = async (e) => {
     e.preventDefault();
+    const response = await fetch('http://127.0.0.1:5000/api/auth/register', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(formData),
+    });
+    const data = await response.json();
+    if (response.ok) {
+      console.log('Success! Returned token is:', data.access_token);
+    } else {
+      console.log('Error:', data.error);
+    }
+  };
 
-    try {
-      const response = await fetch('http://127.0.0.1:5000/api/auth/register', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(formData)
-      })
-      const data = await response.json();
-      console.log(`response is:`, data);
-      if (response.ok) {
-        console.log(`Success! Returned token is: ${data.access_token}`);
-      }
-      else {
-        console.log(`Error: ${data.error}`);
-      }
-    }
-    catch (error) {
-      console.log(`Sign up request failed: ${error.message}`)
-    }
-  }
+  const handleLogin = async (e) => {
+    // replace this stuff with backend things later
+    e.preventDefault();
+    console.log('Logging in with:', formData.username, formData.password);
+  };
 
   return (
     <div className="App">
-      <h1>Carpool Coordinator Sign Up</h1>
-      <div className="Login-border">
-        <form onSubmit={handleSubmit}>
-          <label className="largeLabel" htmlFor="username" >
-            <input className="inputBox" type="text" name="username" id="username" placeholder="Username" value={formData.username} onChange={handleChange} required>
-            </input> 
-          </label>
-          <label className="largeLabel" htmlFor="email">
-            <input className="inputBox" type="text" name="email" id="email" placeholder="Email" value={formData.email} onChange={handleChange} required>
-            </input> 
-          </label>
-          <label className="largeLabel" htmlFor="password">
-            <input className="inputBox" type="text" name="password" id="password" placeholder="Password" value={formData.password} onChange={handleChange} required>
-            </input> 
-          </label>
-          <button type="submit">
-            Sign Up
-          </button>
-        </form>
+      <h1 className="text-4xl font-bold text-[#2A9D8F] mb-6 font-sans">
+        Welcome to Carpool Coordinator!
+      </h1>
+      <div className="space-x-4 mb-6">
+        <button
+          className="px-4 py-2 bg-[#228B22] text-white rounded-lg hover:bg-[#1c6e1c]"
+          onClick={() => {
+            setShowSignup(true);
+            setShowLogin(false);
+          }}
+        >
+          Sign Up
+        </button>
+        <button
+          className="px-4 py-2 bg-[#87CEEB] text-[#333333] rounded-lg hover:bg-[#6bb5d8]"
+          onClick={() => {
+            setShowLogin(true);
+            setShowSignup(false);
+          }}
+        >
+          Log In
+        </button>
+      </div>
+
+      {showSignup && (
+        <div className="mt-6 p-6 bg-[#B2C8BA] rounded-lg shadow-lg w-80">
+          <h2 className="text-xl font-semibold mb-4">Sign Up</h2>
+          <form onSubmit={handleSignup}>
+            <label className="largeLabel" htmlFor="username">
+              <input
+                className="inputBox w-full p-2 mb-2 border rounded"
+                type="text"
+                name="username"
+                id="username"
+                placeholder="Username"
+                value={formData.username}
+                onChange={handleChange}
+                required
+              />
+            </label>
+            <label className="largeLabel" htmlFor="email">
+              <input
+                className="inputBox w-full p-2 mb-2 border rounded"
+                type="email"
+                name="email"
+                id="email"
+                placeholder="Email"
+                value={formData.email}
+                onChange={handleChange}
+                required
+              />
+            </label>
+            <label className="largeLabel" htmlFor="password">
+              <input
+                className="inputBox w-full p-2 mb-4 border rounded"
+                type="password"
+                name="password"
+                id="password"
+                placeholder="Password"
+                value={formData.password}
+                onChange={handleChange}
+                required
+              />
+            </label>
+            <button
+              type="submit"
+              className="w-full p-2 bg-[#228B22] text-white rounded-lg hover:bg-[#1c6e1c]"
+            >
+              Sign Up
+            </button>
+          </form>
         </div>
-    </div >
-  )
+      )}
+
+      {showLogin && (
+        <div className="mt-6 p-6 bg-white shadow-lg rounded-lg border w-80">
+          <h2 className="text-lg font-semibold mb-2">Log In</h2>
+          <form onSubmit={handleLogin}>
+            <label className="largeLabel" htmlFor="username">
+              <input
+                className="inputBox w-full p-2 mb-2 border rounded"
+                type="text"
+                name="username"
+                id="username"
+                placeholder="Username"
+                value={formData.username}
+                onChange={handleChange}
+                required
+              />
+            </label>
+            <label className="largeLabel" htmlFor="password">
+              <input
+                className="inputBox w-full p-2 mb-4 border rounded"
+                type="password"
+                name="password"
+                id="password"
+                placeholder="Password"
+                value={formData.password}
+                onChange={handleChange}
+                required
+              />
+            </label>
+            <button
+              type="submit"
+              className="w-full p-2 bg-[#87CEEB] text-[#333333] rounded-lg hover:bg-[#6bb5d8]"
+            >
+              Log In
+            </button>
+          </form>
+        </div>
+      )}
+    </div>
+  );
 }
 
-export default App
+export default App;
