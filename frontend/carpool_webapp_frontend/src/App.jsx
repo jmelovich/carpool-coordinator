@@ -42,12 +42,12 @@ function App() {
 
   return (
     <div className="App">
-      <h1 className="text-4xl font-bold text-[#2A9D8F] mb-6 font-sans">
-        Welcome to Carpool Coordinator!
+      <h1 className="text-4xl font-bold mb-6 font-sans primary-text">
+      Welcome to Carpool Coordinator!
       </h1>
       <div className="space-x-4 mb-6">
         <button
-          className="px-4 py-2 bg-[#228B22] text-white rounded-lg hover:bg-[#1c6e1c]"
+          className="btn btn-primary"
           onClick={() => {
             setShowSignup(true);
             setShowLogin(false);
@@ -56,7 +56,7 @@ function App() {
           Sign Up
         </button>
         <button
-          className="px-4 py-2 bg-[#87CEEB] text-[#333333] rounded-lg hover:bg-[#6bb5d8]"
+          className="btn btn-accent"
           onClick={() => {
             setShowLogin(true);
             setShowSignup(false);
@@ -67,49 +67,40 @@ function App() {
       </div>
 
       {showSignup && (
-        <div className="mt-6 p-6 bg-[#B2C8BA] rounded-lg shadow-lg w-80">
+        <div className="form-container bg-secondary">
           <h2 className="text-xl font-semibold mb-4">Sign Up</h2>
           <form onSubmit={handleSignup}>
-            <label className="largeLabel" htmlFor="username">
-              <input
-                className="inputBox w-full p-2 mb-2 border rounded"
-                type="text"
-                name="username"
-                id="username"
-                placeholder="Username"
-                value={formData.username}
-                onChange={handleChange}
-                required
-              />
-            </label>
-            <label className="largeLabel" htmlFor="email">
-              <input
-                className="inputBox w-full p-2 mb-2 border rounded"
-                type="email"
-                name="email"
-                id="email"
-                placeholder="Email"
-                value={formData.email}
-                onChange={handleChange}
-                required
-              />
-            </label>
-            <label className="largeLabel" htmlFor="password">
-              <input
-                className="inputBox w-full p-2 mb-4 border rounded"
-                type="password"
-                name="password"
-                id="password"
-                placeholder="Password"
-                value={formData.password}
-                onChange={handleChange}
-                required
-              />
-            </label>
-            <button
-              type="submit"
-              className="w-full p-2 bg-[#228B22] text-white rounded-lg hover:bg-[#1c6e1c]"
-            >
+            <input
+              className="inputBox"
+              type="text"
+              name="username"
+              id="username"
+              placeholder="Username"
+              value={formData.username}
+              onChange={handleChange}
+              required
+            />
+            <input
+              className="inputBox"
+              type="email"
+              name="email"
+              id="email"
+              placeholder="Email"
+              value={formData.email}
+              onChange={handleChange}
+              required
+            />
+            <input
+              className="inputBox"
+              type="password"
+              name="password"
+              id="password"
+              placeholder="Password"
+              value={formData.password}
+              onChange={handleChange}
+              required
+            />
+            <button type="submit" className="btn btn-primary w-full">
               Sign Up
             </button>
           </form>
@@ -117,37 +108,30 @@ function App() {
       )}
 
       {showLogin && (
-        <div className="mt-6 p-6 bg-white shadow-lg rounded-lg border w-80">
+        <div className="form-container bg-white">
           <h2 className="text-lg font-semibold mb-2">Log In</h2>
           <form onSubmit={handleLogin}>
-            <label className="largeLabel" htmlFor="username">
-              <input
-                className="inputBox w-full p-2 mb-2 border rounded"
-                type="text"
-                name="username"
-                id="username"
-                placeholder="Username"
-                value={formData.username}
-                onChange={handleChange}
-                required
-              />
-            </label>
-            <label className="largeLabel" htmlFor="password">
-              <input
-                className="inputBox w-full p-2 mb-4 border rounded"
-                type="password"
-                name="password"
-                id="password"
-                placeholder="Password"
-                value={formData.password}
-                onChange={handleChange}
-                required
-              />
-            </label>
-            <button
-              type="submit"
-              className="w-full p-2 bg-[#87CEEB] text-[#333333] rounded-lg hover:bg-[#6bb5d8]"
-            >
+            <input
+              className="inputBox"
+              type="text"
+              name="username"
+              id="username"
+              placeholder="Username"
+              value={formData.username}
+              onChange={handleChange}
+              required
+            />
+            <input
+              className="inputBox"
+              type="password"
+              name="password"
+              id="password"
+              placeholder="Password"
+              value={formData.password}
+              onChange={handleChange}
+              required
+            />
+            <button type="submit" className="btn btn-accent w-full">
               Log In
             </button>
           </form>
