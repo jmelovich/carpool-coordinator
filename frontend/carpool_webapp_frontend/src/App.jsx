@@ -11,14 +11,31 @@ function App() {
 
   const [showLogin, setShowLogin] = useState(false);
   const [showSignup, setShowSignup] = useState(false);
+  const [showPasswordInstructions, setShowPasswordInstructions] = useState("");
+
+  const validatePassword = password => {
+    const regex = /^[a-zA-Z]+[0-9]+$/;
+    return regex.test(password)
+  }
 
   // for storing input changes to form data
   const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+    const name = e.target.name;
+    const value = e.target.value;
+    setFormData({ ...formData, [name]: value });
   };
 
   const handleSignup = async (e) => {
     e.preventDefault();
+
+    if (!validatePassword(formData.password)) {
+      setShowPasswordInstructions("Password must include at least 1 alphabetical character followed up with at least 1 number");
+      return;
+    }
+    else {
+      setShowPasswordInstructions("");
+    }
+
     const response = await fetch('http://127.0.0.1:5000/api/auth/register', {
       method: 'POST',
       headers: {
@@ -38,6 +55,21 @@ function App() {
     // replace this stuff with backend things later
     e.preventDefault();
     console.log('Logging in with:', formData.username, formData.password);
+    const response = await fetch('http://127.0.0.1:5000/api/auth/login', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(formData),
+    });
+    const data = await response.json();
+    if (response.ok) {
+      console.log('Success! Returned token is:', data.access_token);
+      console.log('User id is:', data.user.id);
+      console.log('User is:', data.user.username);
+    } else {
+      console.log('Error:', data.error);
+    }
   };
 
   return (
@@ -107,6 +139,9 @@ function App() {
                 required
               />
             </label>
+
+            {showPasswordInstructions && <p style={{ color: "red" }}>{showPasswordInstructions}</p>}
+
             <button
               type="submit"
               className="w-full p-2 bg-[#228B22] text-white rounded-lg hover:bg-[#1c6e1c]"
