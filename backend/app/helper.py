@@ -8,5 +8,5 @@ def is_valid_email(email):
 
 def is_valid_password(password):
     # Define a regular expression for validating a password
-    password_regex = r'^[a-zA-Z]+[0-9]+$' # any amount of alphabetical characters followed up with any amount of numbers
+    password_regex = r'^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]{8,}$' # min 8 characters, with at least one letter and one digit
     return re.match(password_regex, password) is not None
