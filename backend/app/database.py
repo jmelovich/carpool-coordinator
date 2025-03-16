@@ -28,6 +28,38 @@ def init_db():
             )
         ''')
         conn.commit()
+        # Create queue table for before the ride
+        # the preferences/occupation of each person are temporary
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS queue (
+                id_queue INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT UNIQUE NOT NULL,
+                email TEXT UNIQUE NOT NULL,
+                occupation_preference TEXT NOT NULL,
+                personality_preference TEXT NOT NULL,
+                occupation_current TEXT NOT NULL,
+                personality_current TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        conn.commit()
+        # Create carpool table for while a ride is ongoing
+        # the preferences/occupation of each person are temporary
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS carpool (
+                id_carpool INTEGER PRIMARY KEY AUTOINCREMENT,
+                username_passenger TEXT UNIQUE NOT NULL,
+                email_passenger TEXT UNIQUE NOT NULL,
+                occupation_preference_passenger TEXT NOT NULL,
+                personality_preference_passenger TEXT NOT NULL,
+                username_driver TEXT UNIQUE NOT NULL,
+                email_driver TEXT UNIQUE NOT NULL,
+                occupation_preference_driver TEXT NOT NULL,
+                personality_preference_driver TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        conn.commit()
     finally:
         conn.close()
 
