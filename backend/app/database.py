@@ -39,6 +39,9 @@ def init_db():
                 personality_preference TEXT NOT NULL,
                 occupation_current TEXT NOT NULL,
                 personality_current TEXT NOT NULL,
+                is_passenger BOOLEAN NOT NULL,
+                origin TEXT NOT NULL,
+                destination TEXT NOT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
@@ -50,12 +53,15 @@ def init_db():
                 id_carpool INTEGER PRIMARY KEY AUTOINCREMENT,
                 username_passenger TEXT UNIQUE NOT NULL,
                 email_passenger TEXT UNIQUE NOT NULL,
-                occupation_preference_passenger TEXT NOT NULL,
-                personality_preference_passenger TEXT NOT NULL,
                 username_driver TEXT UNIQUE NOT NULL,
                 email_driver TEXT UNIQUE NOT NULL,
-                occupation_preference_driver TEXT NOT NULL,
-                personality_preference_driver TEXT NOT NULL,
+                driver_car_make TEXT NOT NULL,
+                driver_car_license_plate TEXT NOT NULL,
+                driver_car_color TEXT NOT NULL,
+                driver_origin TEXT NOT NULL,
+                passenger_origin TEXT NOT NULL,
+                driver_destination TEXT NOT NULL,
+                passenger_destination TEXT NOT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
@@ -122,6 +128,105 @@ def get_user_by_email(email: str) -> Optional[Dict]:
         return dict(user) if user else None
     finally:
         conn.close()
+
+def queue_passenger_or_driver(username: str, occupation_preference: str, personality_preference: str, occupation_current: str, personality_current: str, is_passenger: bool, origin: str, destination: str) -> Optional[int]:
+    """Queue a user as a passenger to a carpool
+
+    Returns:
+        Optional[int]: The ID of the queued user, or None if creation failed
+    """
+    conn = get_db_connection()
+    try: 
+        user_dict = get_user_by_username(username)
+        user_dict_email = user_dict.get("email")
+        cursor = conn.execute(
+            'INSERT INTO queue (username, email, '
+            'occupation_preference, personality_preference, occupation_current, personality_current, '
+            'is_passenger, origin, destination) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', 
+            (username, user_dict_email, occupation_preference, personality_preference, occupation_current, personality_current, is_passenger, origin, destination)
+        )
+        conn.commit()
+        return cursor.lastrowid
+    except sqlite3.IntegrityError:
+        return None
+    finally:
+        conn.close()
+
+def create_carpool(username_passenger: str, username_driver: str, driver_car_make: str, driver_car_license_plate: str, driver_car_color: str, driver_origin: str, passenger_origin: str,driver_destination: str, passenger_destination: str) -> Optional[int]:
+    """Create a carpool with a driver and a passenger
+    
+    Returns:
+        Optional[int]: the ID of the created carpool ride, or None if creation failed"""
+    conn = get_db_connection()
+    try:
+        passenger_dict = get_user_by_username(username_passenger)
+        passenger_dict_email = passenger_dict.get("email")
+        driver_dict = get_user_by_username(username_driver)
+        driver_dict_email = driver_dict.get("email")
+        if not passenger_dict or not driver_dict:
+            return None
+        cursor = conn.execute(
+            'INSERT INTO carpool (username_passenger, email_passenger, username_driver, email_driver, '
+            'driver_car_make, driver_car_license_plate, driver_car_color, '
+            'driver_origin, passenger_origin, driver_destination, passenger_destination) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', 
+            (username_passenger, passenger_dict_email, username_driver, driver_dict_email, driver_car_make, driver_car_license_plate, driver_car_color, driver_origin, passenger_origin, driver_destination, passenger_destination)
+        )
+        conn.commit()
+        return cursor.lastrowid
+    except sqlite3.IntegrityError:
+        return None
+    finally:
+        conn.close()
+
+def unqueue_passenger_or_driver_by_user(username: str) -> str:
+    """Unqueue a user by username
+    
+    Returns: 
+        "Success" if username was found, and "Unsuccessful" if username wasn't found
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.execute(
+            'SELECT username, FROM queue WHERE username = ?',
+            (username,)
+        )
+        user = cursor.fetchone()
+        if user:
+            cursor = conn.execute(
+                'DELETE FROM queue WHERE username = ?', 
+                (username)
+            )
+            conn.commit()
+            return "Success"
+        else:
+            return "Unsuccessful"
+    finally:
+        conn.close() 
+
+def delete_carpool_ride(username_passenger: str, username_driver: str) -> str:
+    """Delete a carpool ride
+
+    Returns: 
+        "Success" if both usernames were found, and "Unsuccessful" if usernames weren't found
+    """
+
+    conn = get_db_connection()
+    try:
+        cursor = conn.execute(
+            'SELECT username_passenger, username_driver, FROM carpool WHERE username_passenger = ? AND username_driver = ?',
+            (username_passenger, username_driver)
+        )
+        ride_row = cursor.fetchone()
+        if ride_row:
+            cursor = conn.execute(
+                'DELETE FROM carpool WHERE username_passenger = ? AND username_driver = ?', 
+                (username_passenger, username_driver)
+            )
+            return "Success"
+        else:
+            return "Unsuccessful"
+    finally:
+        conn.close() 
 
 # Initialize the database when the module is imported
 init_db() 
