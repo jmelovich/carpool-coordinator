@@ -40,3 +40,11 @@
 .read-the-docs {
   color: #888;
 }
+
+.directions {
+  background-color: rgb(12, 234, 20);
+  position: absolute;
+  top: 8px;
+  right: 16px;
+  font-size: 13px;
+}

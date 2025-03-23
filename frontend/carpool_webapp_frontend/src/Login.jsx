@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import './App.css';
-import Map from './Map';
+import CarpoolMap from './CarpoolMap';
 
 function Login() {
   const [formData, setFormData] = useState({
@@ -86,7 +86,7 @@ function Login() {
         </form>
         </div>
       )}
-      {accessToken != "" && <Map />}
+      {accessToken != "" && <CarpoolMap />}
     </div>
   );
 }
