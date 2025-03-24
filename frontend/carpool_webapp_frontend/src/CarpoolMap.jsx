@@ -22,15 +22,14 @@
                           []  (check US license plate character limit, probably 8 or something)
           - map using google maps API
               []  make sure you can specify location and destination using drop map mark
-                  []  account for if the location specified isn't a real location or there isn't a result found
-                      []  maybe try with a button to confirm the address
-                          []  if an address doesn't exist exactly, does there exist a suggested address?
-                              []  if yes, then pop open a description if it means that one with a yes/no maybe
-                              []  maybe make it clickable such that it replaces the current address field with it
-                                  []  would it account for apartment number?
-                                      []  idk
-                              [] if no, then notify the user of an address not found
-                          []  if an address exists exactly, how should an output look like? (design decision)
+              [x]  account for if the location specified isn't a real location or there isn't a result found
+                  [x]  maybe try with a button to confirm the address
+                      []  if an address doesn't exist exactly, does there exist a suggested address?
+                          []  if yes, then pop open a description if it means that one with a yes/no maybe
+                          []  maybe make it clickable such that it replaces the current address field with it
+                              [x]  would it account for apartment number?
+                          [x] if no, then notify the user of an address not found
+                      []  if an address exists exactly, how should an output look like? (design decision)
       */
 
       const [carRideData, setCarRideData] = useState({
@@ -51,12 +50,16 @@
       // // maybe set this to a value on average between the two location's addresses
       // // but converted to GPS coordinates after submitting the form
       // // // currently doesn't adjust center of map automatically with any origins and destinations (only addresses in Gainesville)
-      const position = {lat: 29.646839098891597, lng: -82.35332051688552};
+      // const position = {lat: 29.646839098891597, lng: -82.35332051688552};
+      const [position, setPosition] = useState({lat: 29.646839098891597, lng: -82.35332051688552})
+      // for setting the zoom level on the map initially
+      const [zoom, setZoom] = useState(14);
       // For checking the status of message in the pop up on the google maps pin
       const [open, setOpen] = useState(false);
 
       const handleChangeCarRideData = (e) => {
           setCarRideData({ ...carRideData, [e.target.name]: e.target.value });
+          setformSubmitted(false);
       };
 
       const handleChangeCarpoolData = (e) => {
@@ -68,7 +71,66 @@
       */ 
       const handleMakeCarpool = async (e) => {
         e.preventDefault();
+        const isValid = await fetchCoordinates();
+        if (!isValid) {
+          return
+        };
+
         setformSubmitted(true);
+      }
+
+      const geoCoordinates = async (address) => {
+        const apiKey = `AIzaSyDtDBuw49kkBUSBnyoS0ulkFVLSoHip9Ec`;
+        const response = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${apiKey}`);
+        const data = await response.json();
+        console.log("data is", data);
+        if (data.results.length > 0) {
+          return data.results[0].geometry.location;
+        }
+        else {
+          return null;
+        } 
+      }
+
+      const fetchCoordinates = async () => {
+        const originCoords = await geoCoordinates(carRideData.origin);
+        console.log("Got origin coords", originCoords);
+        const destinationCoords = await geoCoordinates(carRideData.destination);
+        console.log("Got destination coords", destinationCoords);
+
+        if (originCoords && destinationCoords && originCoords.lat === destinationCoords.lat && originCoords.lng === destinationCoords.lng) {
+          setMessage({ type: "error", text: "Origin address and destination address can't be the same. Please enter two different valid addresses." });
+          return false;
+        }
+        if (!originCoords || !destinationCoords) {
+          if (!originCoords && !destinationCoords) {
+            setMessage({ type: "error", text: "Origin address and destination address not found. Please enter valid addresses." });
+            return false;
+          }
+          if (!originCoords) {
+            setMessage({ type: "error", text: "Origin address not found. Please enter a valid address." });
+            return false;
+          }
+          if (!destinationCoords) {
+            setMessage({ type: "error", text: "Destination address not found. Please enter a valid address." });
+            return false;
+          }
+        }
+
+        if (originCoords && destinationCoords) {
+          const avgLat = (originCoords.lat + destinationCoords.lat) / 2;
+          const avgLng = (originCoords.lng + destinationCoords.lng) / 2;
+          setPosition({ lat: avgLat, lng: avgLng });
+          console.log("position is: ", position);
+
+          const distance = Math.sqrt(
+            (originCoords.lat - destinationCoords.lat) ** 2 +
+            (originCoords.lng - destinationCoords.lng) ** 2
+          );
+          setZoom(distance < 0.05 ? 14 : distance < 0.1 ? 12 : 10);
+          console.log("zoom is: ", zoom);
+          return true;
+        }
       }
 
       return (
@@ -169,8 +231,8 @@
               <APIProvider apiKey={`AIzaSyDtDBuw49kkBUSBnyoS0ulkFVLSoHip9Ec`}>
                 <div style={{height: "100vh", width: "100%"}}>
                   <Map 
-                    zoom={14} 
-                    center={position} 
+                    defaultZoom={zoom | 14} 
+                    defaultCenter={position | {lat: 29.646839098891597, lng: -82.35332051688552}} 
                     mapId="3ebcfc86407573e4"
                     fullscreenControl={false}
                   >
