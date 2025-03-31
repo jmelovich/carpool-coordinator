@@ -4,6 +4,7 @@ import './App.css';
 import Login from './Login';
 import Register from './Register';
 import HomePage from './HomePage';
+import CreateCarpool from './CreateCarpool';
 import Cookies from 'js-cookie';
 
 function App() {
@@ -72,6 +73,16 @@ function App() {
             element={
               isAuthenticated ? (
                 <HomePage />
+              ) : (
+                <Navigate to="/" replace />
+              )
+            }
+          />
+          <Route
+            path="/create-carpool"
+            element={
+              isAuthenticated ? (
+                <CreateCarpool />
               ) : (
                 <Navigate to="/" replace />
               )
