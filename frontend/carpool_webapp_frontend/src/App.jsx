@@ -16,6 +16,11 @@ function App() {
     setIsAuthenticated(!!accessToken);
   }, []);
 
+  const handleLogout = () => {
+    Cookies.remove('access_token');
+    setIsAuthenticated(false);
+  };
+
   return (
     <Router>
       <div className="App">
@@ -72,7 +77,7 @@ function App() {
             path="/home"
             element={
               isAuthenticated ? (
-                <HomePage />
+                <HomePage onLogout={handleLogout} />
               ) : (
                 <Navigate to="/" replace />
               )

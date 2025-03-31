@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Cookies from 'js-cookie';
 
-function HomePage() {
+function HomePage({ onLogout }) {
   const [username, setUsername] = useState('');
   const [error, setError] = useState('');
   const navigate = useNavigate();
@@ -14,8 +14,6 @@ function HomePage() {
         navigate('/');
         return;
       }
-
-      console.log('Access token:', accessToken);
 
       try {
         const response = await fetch('http://127.0.0.1:5000/api/users/me', {
@@ -31,7 +29,6 @@ function HomePage() {
         }
 
         const data = await response.json();
-        console.log('User data:', data.user.username);
         setUsername(data.user.username);
       } catch (error) {
         console.error('Error fetching user info:', error);
@@ -45,8 +42,7 @@ function HomePage() {
   }, [navigate]);
 
   const handleLogout = () => {
-    // Remove the access token from cookies
-    Cookies.remove('access_token');
+    onLogout();
     navigate('/');
   };
 
