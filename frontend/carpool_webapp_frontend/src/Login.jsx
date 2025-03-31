@@ -1,14 +1,15 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import Cookies from 'js-cookie';
 import './App.css';
-import CarpoolMap from './CarpoolMap';
 
-function Login() {
+function Login({ setIsAuthenticated }) {
   const [formData, setFormData] = useState({
     username: '',
     password: ''
   });
-  const [accessToken, setAccessToken] = useState("");
   const [message, setMessage] = useState(null);
+  const navigate = useNavigate();
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -31,19 +32,21 @@ function Login() {
       console.log('Success! Returned token is:', data.access_token);
       console.log('User id is:', data.user.id);
       console.log('User is:', data.user.username);
-      setAccessToken(data.access_token);
+      
+      // Store the access token in a cookie
+      Cookies.set('access_token', data.access_token, { expires: 7 }); // Cookie expires in 7 days
+      setIsAuthenticated(true);
       setMessage({ type: "success", text: 'Login successful!' });
+      navigate('/home');
     } else {
       console.log('Error:', data.error);
-      setAccessToken("");
       setMessage({ type: "error", text: data.error });
     }
   };
 
   return (
     <div className="mt-6 p-6 bg-white shadow-lg rounded-lg border w-80">
-      {!accessToken && (
-        <div>
+      <div>
         <h2 className="text-lg font-semibold mb-2">Log In</h2>
 
         {message && (
@@ -84,9 +87,7 @@ function Login() {
             Log In
           </button>
         </form>
-        </div>
-      )}
-      {accessToken != "" && <CarpoolMap />}
+      </div>
     </div>
   );
 }
