@@ -5,6 +5,7 @@ import Login from './Login';
 import Register from './Register';
 import HomePage from './HomePage';
 import CreateCarpool from './CreateCarpool';
+import LandingPage from './LandingPage';
 import Cookies from 'js-cookie';
 
 function App() {
@@ -93,6 +94,7 @@ function App() {
               )
             }
           />
+          <Route path="/landing" element={<LandingPage />} />
         </Routes>
       </div>
     </Router>

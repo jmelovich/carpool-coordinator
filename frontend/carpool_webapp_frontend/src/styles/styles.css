@@ -7,7 +7,7 @@
   
     color-scheme: light dark;
     color: rgba(255, 255, 255, 0.87);
-    background-color: #567662;
+    background-color: #7E9370;
   
     font-synthesis: none;
     text-rendering: optimizeLegibility;
@@ -19,10 +19,12 @@
     margin: 0;
     display: flex;
     justify-content: center;
-    align-items: center;
+    flex-direction: column;
+    /* align-items: center; */
     min-width: 320px;
-    min-height: 100vh;
+    min-height: 100%;
     text-align: center;
+    overflow-x: hidden;
   }  
   
   a {
