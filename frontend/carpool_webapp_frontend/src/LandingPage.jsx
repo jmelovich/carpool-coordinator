@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import Header from './components/Header';
+import HeroSection from './components/HeroSection';
 
 function LandingPage() {
     const navigate = useNavigate();
@@ -11,6 +12,7 @@ function LandingPage() {
     return (
         <div>
             <Header onLogin={handleLogin} />
+            <HeroSection />
         </div>
     );
 }
