@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Cookies from 'js-cookie';
-import './App.css';
+import './styles/styles.css';
 
 function Login({ setIsAuthenticated }) {
   const [formData, setFormData] = useState({

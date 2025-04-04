@@ -8,7 +8,7 @@
     useMapsLibrary,
     useMap
   } from '@vis.gl/react-google-maps';
-  import './App.css';
+  import './styles/styles.css';
 
   function CarpoolMap() {
 
