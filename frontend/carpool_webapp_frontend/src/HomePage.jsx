@@ -23,9 +23,14 @@ function HomePage({ onLogout }) {
             'Content-Type': 'application/json',
           },
         });
-
+       // console.log("Access Token: ", accessToken);
         if (!response.ok) {
-          throw new Error('Failed to fetch user information');
+          console.error('Failed to fetch user information');
+          // delete cookie
+          Cookies.remove('access_token');
+          // redirect to login
+          navigate('/');
+          return;
         }
 
         const data = await response.json();
