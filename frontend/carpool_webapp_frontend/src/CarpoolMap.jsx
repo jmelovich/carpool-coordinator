@@ -47,10 +47,6 @@
       const [formSubmitted, setformSubmitted] = useState(false);
 
       // I set this to UF coordinates in Gainesville
-      // // maybe set this to a value on average between the two location's addresses
-      // // but converted to GPS coordinates after submitting the form
-      // // // currently doesn't adjust center of map automatically with any origins and destinations (only addresses in Gainesville)
-      // const position = {lat: 29.646839098891597, lng: -82.35332051688552};
       const [position, setPosition] = useState({lat: 29.646839098891597, lng: -82.35332051688552})
       // for setting the zoom level on the map initially
       const [zoom, setZoom] = useState(14);
@@ -80,7 +76,7 @@
       }
 
       const geoCoordinates = async (address) => {
-        const apiKey = `AIzaSyDtDBuw49kkBUSBnyoS0ulkFVLSoHip9Ec`;
+        const apiKey = import.meta.env.APP_GOOGLE_MAP_API_KEY;
         const response = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${apiKey}`);
         const data = await response.json();
         console.log("data is", data);
@@ -228,7 +224,7 @@
                 apiKey was process.env.REACT_APP_Google_Maps_API_Key
             */}
             {formSubmitted && (
-              <APIProvider apiKey={`AIzaSyDtDBuw49kkBUSBnyoS0ulkFVLSoHip9Ec`}>
+              <APIProvider apiKey={import.meta.env.APP_GOOGLE_MAP_API_KEY}>
                 <div style={{height: "100vh", width: "100%"}}>
                   <Map 
                     defaultZoom={zoom | 14} 
