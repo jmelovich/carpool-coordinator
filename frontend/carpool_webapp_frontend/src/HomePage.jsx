@@ -87,6 +87,27 @@ function HomePage({ onLogout }) {
               Carpool
             </button>
           </div>
+
+          <div className="bg-[#E9F5F5] p-6 rounded-lg mt-6">
+            <h2 className="text-xl font-semibold text-[#2A9D8F] mb-4">
+              Quiz Page Demo
+            </h2>
+            <p className="text-gray-600 mb-4">
+              This button will be removed, and this page will be dynamically linked to when needed. But for now its here so you can access it easier.
+              I made this to make quizzing the user easier. Now we can have a single generic quiz page, because when this page is loaded- a quiz ID is passed as a URL argument.
+              The backend will then return the quiz data based on the ID, and the quiz will be displayed- this means that quizzes can be defined easily in JSON without having 
+              to change the page or do any code. I've already included support for text input, dropdowns, checkboxes, multiple choice, and address inputs. 
+              
+              In practice, when the user goes to the 'create carpool' page for example, the site can redirect the user to the quiz page first and refer to the 'create_carpool' quiz via 
+              an ID in the URL argument. When the backend support is implemented, and quiz results can be saved- I will make the page fully functional (redirecting back to correct page, autopopulate fields, etc...)
+            </p>
+            <button
+              onClick={() => navigate('/quiz?id=sample_quiz')}
+              className="px-4 py-2 bg-[#2A9D8F] text-white rounded-lg hover:bg-[#238577]"
+            >
+              Try Sample Quiz
+            </button>
+          </div>
         </div>
       </div>
     </div>

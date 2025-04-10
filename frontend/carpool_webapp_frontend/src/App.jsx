@@ -7,6 +7,7 @@ import HomePage from './HomePage';
 import CreateCarpool from './CreateCarpool';
 import MainCarpoolPage from './MainCarpoolPage';
 import LandingPage from './LandingPage';
+import DynamicQuizPage from './DynamicQuizPage';
 import Cookies from 'js-cookie';
 
 function App() {
@@ -100,6 +101,16 @@ function App() {
             element={
               isAuthenticated ? (
                 <MainCarpoolPage />
+              ) : (
+                <Navigate to="/" replace />
+              )
+            }
+          />
+          <Route
+            path="/quiz"
+            element={
+              isAuthenticated ? (
+                <DynamicQuizPage />
               ) : (
                 <Navigate to="/" replace />
               )
