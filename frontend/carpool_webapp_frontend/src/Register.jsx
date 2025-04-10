@@ -1,7 +1,10 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import './styles/styles.css';
+import Cookies from 'js-cookie';
 
-function Register() {
+function Register({ setIsAuthenticated }) {
+  const navigate = useNavigate();
   const [formData, setFormData] = useState({
     username: '',
     email: '',
@@ -43,6 +46,13 @@ function Register() {
     if (response.ok) {
       console.log('Success! Returned token is:', data.access_token);
       setMessage({ type: "success", text: 'User registered successfully!' });
+      
+      // Store the token and update authentication state
+      Cookies.set('access_token', data.access_token);
+      setIsAuthenticated(true);
+      
+      // Redirect to homepage
+      navigate('/home');
     } else {
       console.log('Error:', data.error);
       setMessage({ type: "error", text: data.error });

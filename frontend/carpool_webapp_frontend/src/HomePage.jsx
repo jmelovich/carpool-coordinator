@@ -73,36 +73,19 @@ function HomePage({ onLogout }) {
             </div>
           )}
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="bg-[#E9F5F5] p-6 rounded-lg">
-              <h2 className="text-xl font-semibold text-[#2A9D8F] mb-4">
-                Create a Carpool
-              </h2>
-              <p className="text-gray-600 mb-4">
-                Start a new carpool and invite others to join your ride.
-              </p>
-              <button
-                onClick={() => navigate('/create-carpool')}
-                className="px-4 py-2 bg-[#2A9D8F] text-white rounded-lg hover:bg-[#238577]"
-              >
-                Create Carpool
-              </button>
-            </div>
-
-            <div className="bg-[#E9F5F5] p-6 rounded-lg">
-              <h2 className="text-xl font-semibold text-[#2A9D8F] mb-4">
-                My Carpools
-              </h2>
-              <p className="text-gray-600 mb-4">
-                View and manage your existing carpools.
-              </p>
-              <button
-                onClick={() => navigate('/my-carpools')}
-                className="px-4 py-2 bg-[#2A9D8F] text-white rounded-lg hover:bg-[#238577]"
-              >
-                View Carpools
-              </button>
-            </div>
+          <div className="bg-[#E9F5F5] p-6 rounded-lg">
+            <h2 className="text-xl font-semibold text-[#2A9D8F] mb-4">
+              Carpool Management
+            </h2>
+            <p className="text-gray-600 mb-4">
+              Create, view, and manage your carpools.
+            </p>
+            <button
+              onClick={() => navigate('/carpool')}
+              className="px-4 py-2 bg-[#2A9D8F] text-white rounded-lg hover:bg-[#238577]"
+            >
+              Carpool
+            </button>
           </div>
         </div>
       </div>

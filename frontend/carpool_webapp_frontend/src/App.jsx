@@ -5,6 +5,7 @@ import Login from './Login';
 import Register from './Register';
 import HomePage from './HomePage';
 import CreateCarpool from './CreateCarpool';
+import MainCarpoolPage from './MainCarpoolPage';
 import LandingPage from './LandingPage';
 import Cookies from 'js-cookie';
 
@@ -89,6 +90,16 @@ function App() {
             element={
               isAuthenticated ? (
                 <CreateCarpool />
+              ) : (
+                <Navigate to="/" replace />
+              )
+            }
+          />
+          <Route
+            path="/carpool"
+            element={
+              isAuthenticated ? (
+                <MainCarpoolPage />
               ) : (
                 <Navigate to="/" replace />
               )

@@ -22,12 +22,20 @@ function CreateCarpool() {
             <h1 className="text-3xl font-bold text-[#2A9D8F]">
               Create a New Carpool
             </h1>
-            <button
-              onClick={() => navigate('/home')}
-              className="px-4 py-2 bg-[#2A9D8F] text-white rounded-lg hover:bg-[#238577]"
-            >
-              Back to Home
-            </button>
+            <div className="flex space-x-2">
+              <button
+                onClick={() => navigate('/carpool')}
+                className="px-4 py-2 bg-[#264653] text-white rounded-lg hover:bg-[#1a323c]"
+              >
+                Back to Carpools
+              </button>
+              <button
+                onClick={() => navigate('/home')}
+                className="px-4 py-2 bg-[#2A9D8F] text-white rounded-lg hover:bg-[#238577]"
+              >
+                Back to Home
+              </button>
+            </div>
           </div>
           <CarpoolMap />
         </div>
