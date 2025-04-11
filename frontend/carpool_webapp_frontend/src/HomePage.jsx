@@ -102,7 +102,7 @@ function HomePage({ onLogout }) {
               an ID in the URL argument. When the backend support is implemented, and quiz results can be saved- I will make the page fully functional (redirecting back to correct page, autopopulate fields, etc...)
             </p>
             <button
-              onClick={() => navigate('/quiz?id=sample_quiz')}
+              onClick={() => navigate('/quiz?id=personality_quiz')}
               className="px-4 py-2 bg-[#2A9D8F] text-white rounded-lg hover:bg-[#238577]"
             >
               Try Sample Quiz

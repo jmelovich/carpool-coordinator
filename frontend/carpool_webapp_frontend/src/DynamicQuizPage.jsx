@@ -9,96 +9,54 @@ function DynamicQuizPage() {
   const [answers, setAnswers] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [quizTitle, setQuizTitle] = useState('');
+  const [quizDescription, setQuizDescription] = useState('');
+  const [returnAddress, setReturnAddress] = useState('/home');
+  const [queryParams, setQueryParams] = useState({});
   
   const navigate = useNavigate();
   const location = useLocation();
 
-  // Sample quiz data template
-  const sampleQuizData = {
-    id: "sample_quiz",
-    title: "Sample Quiz",
-    description: "This is a sample quiz demonstrating various question types",
-    questions: [
-      {
-        id: "q1",
-        type: "short_text",
-        required: true,
-        question: "What is your favoritename?"
-      },
-      {
-        id: "q2",
-        type: "long_text",
-        required: true,
-        question: "Type something very interesting here."
-      },
-      {
-        id: "q3",
-        type: "dropdown",
-        required: true,
-        question: "What is your preferred contact method?",
-        options: ["Email", "Phone", "Text", "In-person"]
-      },
-      {
-        id: "q4",
-        type: "multiple_choice",
-        required: true,
-        question: "What is your favorite color?",
-        options: ["Red", "Blue", "Green", "Yellow", "Purple"]
-      },
-      {
-        id: "q5",
-        type: "checkbox",
-        required: false,
-        question: "How much of these apply to you?",
-        options: ["Convicted Felon", "Certified Freak", "Licensed To Kill", "Hopeless"]
-      },
-      {
-        id: "q6",
-        type: "address",
-        required: false,
-        question: "What is your ideal address?"
-      }
-    ]
-  };
-
   useEffect(() => {
-    // Extract quiz ID from URL parameters
+    // Extract all URL parameters
     const params = new URLSearchParams(location.search);
     const id = params.get('id');
+    
+    // Create an object to store all query parameters
+    const allParams = {};
+    params.forEach((value, key) => {
+      if (key !== 'id') {
+        allParams[key] = value;
+      }
+    });
+    
+    // Store additional query parameters
+    setQueryParams(allParams);
+    console.log("Additional URL parameters:", allParams);
+    
     if (id) {
       setQuizId(id);
       console.log("Quiz ID from URL:", id);
     } else {
       console.log("No quiz ID provided in URL");
+      setError("No quiz ID provided in URL");
+      setLoading(false);
+      return;
     }
 
-    // TODO: Implement quiz data fetching from backend
-    // It should send a request to the backend with the quiz ID
-    // The backend should then return the quiz data
-    // For now though, we will directly load the sample quiz data
-    setQuestions(sampleQuizData.questions);
-    
-    // Initialize answers object with empty values for each question
-    const initialAnswers = {};
-    sampleQuizData.questions.forEach(question => {
-      if (question.type === 'checkbox') {
-        initialAnswers[question.id] = [];
-      } else {
-        initialAnswers[question.id] = '';
-      }
-    });
-    setAnswers(initialAnswers);
-    setLoading(false);
+    // Check if access token exists
+    const accessToken = Cookies.get('access_token');
+    if (!accessToken) {
+      console.log("No access token found, redirecting to login");
+      navigate('/');
+      return;
+    }
+    console.log("Access token found:", accessToken.substring(0, 10) + "...");
 
     // Fetch user information
     const fetchUserInfo = async () => {
-      const accessToken = Cookies.get('access_token');
-      if (!accessToken) {
-        navigate('/');
-        return;
-      }
-
       try {
+        console.log("Fetching user information...");
         const response = await fetch('http://127.0.0.1:5000/api/users/me', {
           method: 'GET',
           headers: {
@@ -108,7 +66,7 @@ function DynamicQuizPage() {
         });
         
         if (!response.ok) {
-          console.error('Failed to fetch user information');
+          console.error('Failed to fetch user information:', response.status, response.statusText);
           // Delete cookie and redirect to login
           Cookies.remove('access_token');
           navigate('/');
@@ -116,15 +74,81 @@ function DynamicQuizPage() {
         }
 
         const data = await response.json();
+        console.log("User info fetched successfully:", data);
         setUsername(data.user.username);
       } catch (error) {
         console.error('Error fetching user info:', error);
         setError('Failed to load user information');
-        navigate('/');
+        // Don't navigate here, just set the error
       }
     };
 
+    // Fetch quiz data from backend
+    const fetchQuizData = async () => {
+      try {
+        console.log("Fetching quiz data for ID:", id);
+        const response = await fetch(`http://127.0.0.1:5000/api/quiz/get?quiz_id=${id}`, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+        });
+        
+        if (!response.ok) {
+          console.error('Failed to fetch quiz data:', response.status, response.statusText);
+          setError('Failed to load quiz data');
+          setLoading(false);
+          return;
+        }
+
+        const data = await response.json();
+        console.log("Quiz data from API:", data);
+        
+        try {
+          // Parse the JSON string from the response
+          const quizData = JSON.parse(data.json);
+          console.log("Parsed quiz data:", quizData);
+          
+          // Set quiz metadata
+          setQuizTitle(quizData.title);
+          setQuizDescription(quizData.description);
+          setReturnAddress(data.return_address);
+          
+          // Set questions
+          setQuestions(quizData.questions);
+          
+          // Initialize answers object with values from existing_answers or empty values for each question
+          const initialAnswers = {};
+          quizData.questions.forEach(question => {
+            // Check if there's an existing answer for this question's universal_id
+            const existingAnswer = data.existing_answers[question.universal_id];
+            
+            if (question.type === 'checkbox') {
+              initialAnswers[question.id] = existingAnswer || [];
+            } else {
+              initialAnswers[question.id] = existingAnswer || '';
+            }
+          });
+          
+          console.log("Initial answers with existing data:", initialAnswers);
+          setAnswers(initialAnswers);
+          setLoading(false);
+        } catch (parseError) {
+          console.error('Error parsing quiz JSON:', parseError);
+          setError('Failed to parse quiz data');
+          setLoading(false);
+        }   
+      } catch (error) {
+        console.error('Error fetching quiz data:', error);
+        setError('Failed to load quiz data');
+        setLoading(false);
+      }
+    };
+
+    // Run both fetch operations
     fetchUserInfo();
+    fetchQuizData();
   }, [navigate, location]);
 
   const handleInputChange = (questionId, value) => {
@@ -151,14 +175,46 @@ function DynamicQuizPage() {
     });
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     console.log("Quiz ID:", quizId);
     console.log("Submitted answers:", answers);
+    console.log("Context parameters:", queryParams);
     
-    // Here you would send the answers to the backend
-    // For now just log them to the console
-    alert("Quiz submitted successfully!");
+    // Create a map of universal_id to answers
+    const universalIdAnswers = {};
+    questions.forEach(question => {
+      universalIdAnswers[question.universal_id] = answers[question.id];
+    });
+    
+    console.log("Universal ID answers map:", universalIdAnswers);
+    
+    try {
+      const accessToken = Cookies.get('access_token');
+      const response = await fetch('http://127.0.0.1:5000/api/quiz/save', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          quiz_id: quizId,
+          answers: universalIdAnswers,
+          context: queryParams
+        }),
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to save quiz: ${response.status}`);
+      }
+      
+      alert("Quiz submitted successfully!");
+      // Navigate to the return address
+      navigate(returnAddress);
+    } catch (error) {
+      console.error('Error saving quiz answers:', error);
+      setError('Failed to save quiz answers. Please try again.');
+    }
   };
 
   // Render different question types
@@ -302,7 +358,7 @@ function DynamicQuizPage() {
         <div className="bg-white rounded-lg shadow-lg p-6">
           <div className="flex justify-between items-center mb-6">
             <h1 className="text-3xl font-bold text-[#2A9D8F]">
-              {sampleQuizData.title}
+              {quizTitle || "Loading Quiz..."}
             </h1>
             <div className="flex items-center gap-4">
               <span className="text-gray-600">Welcome, {username || 'User'}</span>
@@ -321,27 +377,33 @@ function DynamicQuizPage() {
             </div>
           )}
 
-          <p className="text-gray-600 mb-6">{sampleQuizData.description}</p>
+          <p className="text-gray-600 mb-6">{quizDescription || "Loading description..."}</p>
 
-          <form onSubmit={handleSubmit} className="space-y-6">
-            {questions.map((question, index) => (
-              <div key={question.id} className="bg-[#E9F5F5] p-4 rounded-lg">
-                <label className="block text-lg font-medium text-[#2A9D8F] mb-2">
-                  {index + 1}. {question.question} {question.required && <span className="text-red-500">*</span>}
-                </label>
-                {renderQuestion(question)}
+          {questions.length > 0 ? (
+            <form onSubmit={handleSubmit} className="space-y-6">
+              {questions.map((question, index) => (
+                <div key={question.id} className="bg-[#E9F5F5] p-4 rounded-lg">
+                  <label className="block text-lg font-medium text-[#2A9D8F] mb-2">
+                    {index + 1}. {question.question} {question.required && <span className="text-red-500">*</span>}
+                  </label>
+                  {renderQuestion(question)}
+                </div>
+              ))}
+
+              <div className="flex justify-end">
+                <button
+                  type="submit"
+                  className="px-6 py-3 bg-[#2A9D8F] text-white rounded-lg hover:bg-[#238577] font-medium"
+                >
+                  Submit
+                </button>
               </div>
-            ))}
-
-            <div className="flex justify-end">
-              <button
-                type="submit"
-                className="px-6 py-3 bg-[#2A9D8F] text-white rounded-lg hover:bg-[#238577] font-medium"
-              >
-                Submit
-              </button>
+            </form>
+          ) : (
+            <div className="text-center py-8">
+              <p className="text-gray-600">No questions found for this quiz.</p>
             </div>
-          </form>
+          )}
         </div>
       </div>
     </div>

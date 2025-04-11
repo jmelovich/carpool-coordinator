@@ -2,13 +2,17 @@ from flask import jsonify, request
 from app import app, bcrypt
 from app.database import (
     create_user, get_user_by_id,
-    get_user_by_username, get_user_by_email
+    get_user_by_username, get_user_by_email,
+    get_quiz_by_id, save_quiz_results, get_specific_user_data, init_app
 )
 from flask_jwt_extended import (
     create_access_token, get_jwt_identity,
     jwt_required
 )
 from app.helper import is_valid_email, is_valid_password
+import json
+
+init_app(app)
 
 # Health check routes
 @app.route('/')
@@ -138,3 +142,101 @@ def get_user_info(user_id):
         return jsonify({'user': user})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+@app.route('/api/quiz/get', methods=['GET'])
+@jwt_required()
+def get_quiz():
+    """Get quiz data by quiz_id (protected route)"""
+    # Get quiz_id from query parameters
+    quiz_id = request.args.get('quiz_id')
+    
+    if not quiz_id:
+        return jsonify({'error': 'Quiz ID is required'}), 400
+    
+    # Get quiz data from database
+    quiz_data = get_quiz_by_id(quiz_id)
+    
+    if not quiz_data:
+        return jsonify({'error': 'Quiz not found'}), 404
+    
+    # Get current user ID from JWT token
+    current_user_id = int(get_jwt_identity())
+    
+    # Parse quiz JSON to extract universal_ids for questions
+    try:
+        quiz_json = json.loads(quiz_data['json'])
+        universal_ids = [question.get('universal_id') for question in quiz_json.get('questions', [])]
+        
+        # Get existing answers for these universal_ids
+        existing_answers = get_specific_user_data(current_user_id, universal_ids)
+        
+        # Return quiz data along with existing answers
+        return jsonify({
+            'quiz_id': quiz_data['quiz_id'],
+            'json': quiz_data['json'],
+            'return_address': quiz_data['return_address'],
+            'existing_answers': existing_answers
+        })
+    except json.JSONDecodeError:
+        return jsonify({'error': 'Failed to parse quiz data'}), 500
+
+@app.route('/api/quiz/save', methods=['POST'])
+@jwt_required()
+def save_quiz():
+    """Save quiz results for the current user (protected route)"""
+    # Get current user ID from JWT token
+    current_user_id = int(get_jwt_identity())
+    
+    # Get data from request body
+    data = request.get_json()
+    if not data or 'quiz_id' not in data or 'answers' not in data:
+        return jsonify({'error': 'Quiz ID and answers are required'}), 400
+    
+    # Validate answers format
+    if not isinstance(data['answers'], dict):
+        return jsonify({'error': 'Answers must be a dictionary mapping universal_ids to values'}), 400
+    
+    # Prepare context for variable substitution if needed
+    context = {
+        'user_id': current_user_id,
+        # Add any other context variables that might be needed
+    }
+    
+    # Add quiz_id to the context if it might be used in universal_ids
+    if 'quiz_id' in data:
+        context['quiz_id'] = data['quiz_id']
+    
+    # If there are any additional parameters that might be used in variable substitution, 
+    # add them to the context
+    if 'context' in data and isinstance(data['context'], dict):
+        context.update(data['context'])
+
+    # print the context to log
+    print(f"Context for variable substitution: {context}")
+    
+    # Save quiz results to appropriate locations based on universal_ids
+    result = save_quiz_results(
+        user_id=current_user_id,
+        results=data['answers'],
+        context=context
+    )
+    
+    # Return the detailed results
+    if not result['success']:
+        # Some or all operations failed
+        return jsonify({
+            'success': False,
+            'message': result['message'],
+            'operations': result['operations']
+        }), 500
+    
+    # All operations succeeded
+    return jsonify({
+        'success': True,
+        'message': result['message'],
+        'operations': result['operations']
+    }), 200
+    
+
+
+    

@@ -1,0 +1,94 @@
+[
+  {
+    "id": "personality_quiz",
+    "title": "Personality Assessment Quiz",
+    "description": "This quiz helps us understand your personality to match you with compatible carpool partners",
+    "return_address": "/home",
+    "questions": [
+      {
+        "id": "q1",
+        "type": "short_text",
+        "required": true,
+        "question": "What is your name?",
+        "universal_id": "users[id:<user_id>]@user_data->user_name"
+      },
+      {
+        "id": "q2",
+        "type": "dropdown",
+        "required": true,
+        "question": "What is your preferred conversation style during carpool rides?",
+        "options": ["Quiet and focused", "Casual small talk", "Deep discussions", "Music only"],
+        "universal_id": "users[id:<user_id>]@user_data->conversation_style"
+      },
+      {
+        "id": "q3",
+        "type": "multiple_choice",
+        "required": true,
+        "question": "What is your preferred carpool schedule?",
+        "options": ["Early morning (5-7am)", "Morning (7-9am)", "Afternoon (3-5pm)", "Evening (5-7pm)"],
+        "universal_id": "users[id:<user_id>]@user_data->carpool_schedule"
+      },
+      {
+        "id": "q4",
+        "type": "checkbox",
+        "required": false,
+        "question": "Which of these apply to you?",
+        "options": ["I prefer to drive", "I prefer to be a passenger", "I'm flexible", "I have a pet that may travel with me"],
+        "universal_id": "users[id:<user_id>]@user_data->carpool_preferences"
+      },
+      {
+        "id": "q5",
+        "type": "long_text",
+        "required": false,
+        "question": "Any additional information you'd like to share about your carpool preferences?",
+        "universal_id": "users[id:<user_id>]@user_data->additional_info"
+      }
+    ]
+  },
+  {
+    "id": "route_preference_quiz",
+    "title": "Route Preference Quiz",
+    "description": "This quiz helps us understand your travel preferences to find the best carpool matches",
+    "return_address": "/carpool",
+    "questions": [
+      {
+        "id": "q1",
+        "type": "address",
+        "required": true,
+        "question": "What is your pickup address?",
+        "universal_id": "test[carpool_id:<carpool_id>]@driver_origin"
+      },
+      {
+        "id": "q2",
+        "type": "address",
+        "required": true,
+        "question": "What is your destination address?",
+        "universal_id": "test[carpool_id:<carpool_id>]@driver_destination"
+      },
+      {
+        "id": "q3",
+        "type": "dropdown",
+        "required": true,
+        "question": "How flexible are you with your departure time?",
+        "options": ["Very flexible (±30 minutes)", "Somewhat flexible (±15 minutes)", "Not flexible (exact time only)"],
+        "universal_id": "test[carpool_id:<carpool_id>]@carpool_data->departure_flexibility"
+      },
+      {
+        "id": "q4",
+        "type": "multiple_choice",
+        "required": true,
+        "question": "What is your preferred route type?",
+        "options": ["Fastest route", "Most scenic route", "Avoid highways", "Avoid toll roads"],
+        "universal_id": "test[carpool_id:<carpool_id>]@carpool_data->route_type"
+      },
+      {
+        "id": "q5",
+        "type": "checkbox",
+        "required": false,
+        "question": "Which amenities would you like in your carpool ride?",
+        "options": ["Air conditioning", "Heated seats", "Bluetooth connectivity", "Child car seat", "Trunk space for luggage"],
+        "universal_id": "test[carpool_id:<carpool_id>]@carpool_data->carpool_amenities"
+      }
+    ]
+  }
+]

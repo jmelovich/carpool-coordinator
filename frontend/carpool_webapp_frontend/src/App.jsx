@@ -109,11 +109,7 @@ function App() {
           <Route
             path="/quiz"
             element={
-              isAuthenticated ? (
                 <DynamicQuizPage />
-              ) : (
-                <Navigate to="/" replace />
-              )
             }
           />
           <Route path="/landing" element={<LandingPage />} />
