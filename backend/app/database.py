@@ -411,6 +411,19 @@ def _substitute_context(key_value: str, context: Optional[Dict]) -> str:
     """Substitute <variable> placeholders in key_value using context and Flask g."""
     if context and isinstance(key_value, str) and key_value.startswith('<') and key_value.endswith('>'):
         var_name = key_value[1:-1]
+        
+        # Check if this is an answer reference pattern <answer:qX>
+        answer_match = re.match(r'answer:([a-zA-Z0-9_]+)', var_name)
+        if answer_match:
+            question_id = answer_match.group(1)
+            # Look for the answer in context under 'answers' or 'quiz_answers'
+            answers = context.get('answers', {}) or context.get('quiz_answers', {})
+            if question_id in answers:
+                return str(answers[question_id])
+            print(f"Warning: Answer for question {question_id} not found in context")
+            return key_value  # Return original if answer not found
+            
+        # Original functionality for other variables
         # Prioritize g, then context dict, fallback to original string
         val_from_g = g.get(var_name)
         if val_from_g is not None:
@@ -608,10 +621,12 @@ def save_quiz_results(user_id: int, results: Dict, context: Dict) -> Dict:
     if not results: return {'success': True, 'operations': [], 'message': 'No results to save'}
 
     if 'user' in g: context['user'] = g.user # Example if user object is stored in g
+    context['user_id'] = user_id  # Ensure user_id is in context
 
     operations_results = {'success': True, 'operations': [], 'message': ''}
     failed_ids = []
 
+    # Save regular quiz answers
     for universal_id, value in results.items():
         success = save_data_for_universal_id(universal_id, value, context)
         operations_results['operations'].append({
@@ -621,6 +636,40 @@ def save_quiz_results(user_id: int, results: Dict, context: Dict) -> Dict:
         if not success:
             operations_results['success'] = False
             failed_ids.append(universal_id)
+
+    # Process completion operations if present in quiz data
+    quiz_id = context.get('quiz_id')
+    if quiz_id:
+        try:
+            quiz_data = get_quiz_by_id(quiz_id)
+            if quiz_data and 'json' in quiz_data:
+                quiz_json = json.loads(quiz_data['json']) if isinstance(quiz_data['json'], str) else quiz_data['json']
+                completion_operations = quiz_json.get('completion_operation', [])
+                
+                # Process each completion operation
+                for operation in completion_operations:
+                    if 'value' in operation and 'universal_id' in operation:
+                        # Substitute context variables in value
+                        raw_value = operation['value']
+                        value = _substitute_context(raw_value, context)
+                        
+                        # Save the value using the universal_id
+                        universal_id = operation['universal_id']
+                        success = save_data_for_universal_id(universal_id, value, context)
+                        
+                        operations_results['operations'].append({
+                            'universal_id': universal_id, 
+                            'success': success,
+                            'message': f'Completion operation saved' if success else f'Completion operation failed'
+                        })
+                        
+                        if not success:
+                            operations_results['success'] = False
+                            failed_ids.append(universal_id)
+        except Exception as e:
+            print(f"Error processing completion operations: {e}")
+            operations_results['success'] = False
+            operations_results['message'] = f'Error in completion operations: {str(e)}'
 
     if not operations_results['success']:
         operations_results['message'] = f'Failed to save results for: {", ".join(failed_ids)}'

@@ -199,7 +199,7 @@ def save_quiz():
     # Prepare context for variable substitution if needed
     context = {
         'user_id': current_user_id,
-        # Add any other context variables that might be needed
+        # Add other context variables that might be needed
     }
     
     # Add quiz_id to the context if it might be used in universal_ids
@@ -210,8 +210,25 @@ def save_quiz():
     # add them to the context
     if 'context' in data and isinstance(data['context'], dict):
         context.update(data['context'])
-
-    # print the context to log
+    
+    # Add the answers dictionary to the context for <answer:qX> references
+    # We can use the question_ids mapping sent from the frontend
+    if 'question_ids' in data and isinstance(data['question_ids'], dict):
+        # Create a dictionary with question_id as key and the corresponding answer as value
+        answers_by_question_id = {}
+        for universal_id, question_id in data['question_ids'].items():
+            if universal_id in data['answers']:
+                answers_by_question_id[question_id] = data['answers'][universal_id]
+        
+        context['answers'] = answers_by_question_id
+        print(f"Added answers by question ID to context: {answers_by_question_id}")
+    
+    # As a fallback, also use raw_answers if provided (keyed directly by question_id)
+    elif 'raw_answers' in data and isinstance(data['raw_answers'], dict):
+        context['answers'] = data['raw_answers']
+        print(f"Using raw answers by question ID: {data['raw_answers']}")
+    
+    # Print the context to log for debugging
     print(f"Context for variable substitution: {context}")
     
     # Save quiz results to appropriate locations based on universal_ids

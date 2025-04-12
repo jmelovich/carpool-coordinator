@@ -183,11 +183,17 @@ function DynamicQuizPage() {
     
     // Create a map of universal_id to answers
     const universalIdAnswers = {};
+    
+    // Create a mapping from universal_id to question_id
+    const questionIdMap = {};
+    
     questions.forEach(question => {
       universalIdAnswers[question.universal_id] = answers[question.id];
+      questionIdMap[question.universal_id] = question.id;
     });
     
     console.log("Universal ID answers map:", universalIdAnswers);
+    console.log("Question ID map:", questionIdMap);
     
     try {
       const accessToken = Cookies.get('access_token');
@@ -200,6 +206,8 @@ function DynamicQuizPage() {
         body: JSON.stringify({
           quiz_id: quizId,
           answers: universalIdAnswers,
+          question_ids: questionIdMap,
+          raw_answers: answers,  // Also include the original answers keyed by question_id directly
           context: queryParams
         }),
       });
@@ -300,11 +308,24 @@ function DynamicQuizPage() {
         );
       
       case 'date':
+        // Convert stored MM-DD-YYYY to YYYY-MM-DD for the date input
+        let dateInputValue = '';
+        if (answers[question.id]) {
+          try {
+            const [month, day, year] = answers[question.id].split('-');
+            if (month && day && year) {
+              dateInputValue = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+            }
+          } catch (error) {
+            console.error('Error parsing date value:', error);
+          }
+        }
+        
         return (
           <input
             type="date"
             id={question.id}
-            value={answers[question.id] || ''}
+            value={dateInputValue}
             onChange={(e) => {
               // Convert YYYY-MM-DD format to MM-DD-YYYY format
               const dateValue = e.target.value;
@@ -344,12 +365,18 @@ function DynamicQuizPage() {
         
         if (existingDateTime) {
           const [datePart, timePart] = existingDateTime.split(';');
-          if (datePart && timePart) {
-            // Convert MM-DD-YYYY back to YYYY-MM-DD for the date input
-            const [month, day, year] = datePart.split('-');
-            dateValue = `${year}-${month}-${day}`;
-            timeValue = timePart;
+          if (datePart) {
+            try {
+              // Convert MM-DD-YYYY back to YYYY-MM-DD for the date input
+              const [month, day, year] = datePart.split('-');
+              if (month && day && year) {
+                dateValue = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+              }
+            } catch (error) {
+              console.error('Error parsing date part:', error);
+            }
           }
+          timeValue = timePart || '';
         }
         
         return (
@@ -390,16 +417,13 @@ function DynamicQuizPage() {
                     const newTimeValue = e.target.value;
                     let newCombinedValue = '';
                     
-                    if (dateValue && newTimeValue) {
-                      // Get MM-DD-YYYY part from existing date value
-                      const [year, month, day] = dateValue.split('-');
-                      const formattedDate = `${month}-${day}-${year}`;
-                      newCombinedValue = `${formattedDate};${newTimeValue}`;
-                    } else if (dateValue) {
-                      // Get MM-DD-YYYY part from existing date value
-                      const [year, month, day] = dateValue.split('-');
-                      const formattedDate = `${month}-${day}-${year}`;
-                      newCombinedValue = formattedDate;
+                    // Get the date part from the stored value in MM-DD-YYYY format
+                    const datePart = existingDateTime.split(';')[0] || '';
+                    
+                    if (datePart && newTimeValue) {
+                      newCombinedValue = `${datePart};${newTimeValue}`;
+                    } else if (datePart) {
+                      newCombinedValue = datePart;
                     } else if (newTimeValue) {
                       newCombinedValue = `;${newTimeValue}`;
                     }
@@ -456,6 +480,26 @@ function DynamicQuizPage() {
               required={question.required}
             />
           </div>
+        );
+      
+      case 'integer':
+        return (
+          <input
+            type="number"
+            id={question.id}
+            value={answers[question.id] || ''}
+            onChange={(e) => handleInputChange(question.id, e.target.value)}
+            className="w-full p-2 border border-gray-300 rounded"
+            required={question.required}
+            step="1"
+            onInput={(e) => {
+              // Force integer values by removing decimals
+              if (e.target.value.includes('.')) {
+                e.target.value = parseInt(e.target.value) || '';
+                handleInputChange(question.id, e.target.value);
+              }
+            }}
+          />
         );
       
       default:
