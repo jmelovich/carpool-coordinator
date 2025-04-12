@@ -299,6 +299,121 @@ function DynamicQuizPage() {
           </div>
         );
       
+      case 'date':
+        return (
+          <input
+            type="date"
+            id={question.id}
+            value={answers[question.id] || ''}
+            onChange={(e) => {
+              // Convert YYYY-MM-DD format to MM-DD-YYYY format
+              const dateValue = e.target.value;
+              if (dateValue) {
+                const [year, month, day] = dateValue.split('-');
+                const formattedDate = `${month}-${day}-${year}`;
+                handleInputChange(question.id, formattedDate);
+              } else {
+                handleInputChange(question.id, '');
+              }
+            }}
+            className="w-full p-2 border border-gray-300 rounded"
+            required={question.required}
+          />
+        );
+      
+      case 'time':
+        return (
+          <input
+            type="time"
+            id={question.id}
+            value={answers[question.id] || ''}
+            onChange={(e) => {
+              // Time input already provides HH:MM format
+              handleInputChange(question.id, e.target.value);
+            }}
+            className="w-full p-2 border border-gray-300 rounded"
+            required={question.required}
+          />
+        );
+      
+      case 'date_time':
+        // Parse existing value to populate date and time fields
+        const existingDateTime = answers[question.id] || '';
+        let dateValue = '';
+        let timeValue = '';
+        
+        if (existingDateTime) {
+          const [datePart, timePart] = existingDateTime.split(';');
+          if (datePart && timePart) {
+            // Convert MM-DD-YYYY back to YYYY-MM-DD for the date input
+            const [month, day, year] = datePart.split('-');
+            dateValue = `${year}-${month}-${day}`;
+            timeValue = timePart;
+          }
+        }
+        
+        return (
+          <div className="space-y-2">
+            <div className="flex gap-4 items-center">
+              <div className="flex-1">
+                <label className="block text-sm text-gray-600 mb-1">Date</label>
+                <input
+                  type="date"
+                  id={`${question.id}-date`}
+                  value={dateValue}
+                  onChange={(e) => {
+                    const newDateValue = e.target.value;
+                    let newCombinedValue = '';
+                    
+                    if (newDateValue) {
+                      // Convert YYYY-MM-DD to MM-DD-YYYY
+                      const [year, month, day] = newDateValue.split('-');
+                      const formattedDate = `${month}-${day}-${year}`;
+                      newCombinedValue = timeValue ? `${formattedDate};${timeValue}` : formattedDate;
+                    } else if (timeValue) {
+                      newCombinedValue = `;${timeValue}`;
+                    }
+                    
+                    handleInputChange(question.id, newCombinedValue);
+                  }}
+                  className="w-full p-2 border border-gray-300 rounded"
+                  required={question.required}
+                />
+              </div>
+              <div className="flex-1">
+                <label className="block text-sm text-gray-600 mb-1">Time</label>
+                <input
+                  type="time"
+                  id={`${question.id}-time`}
+                  value={timeValue}
+                  onChange={(e) => {
+                    const newTimeValue = e.target.value;
+                    let newCombinedValue = '';
+                    
+                    if (dateValue && newTimeValue) {
+                      // Get MM-DD-YYYY part from existing date value
+                      const [year, month, day] = dateValue.split('-');
+                      const formattedDate = `${month}-${day}-${year}`;
+                      newCombinedValue = `${formattedDate};${newTimeValue}`;
+                    } else if (dateValue) {
+                      // Get MM-DD-YYYY part from existing date value
+                      const [year, month, day] = dateValue.split('-');
+                      const formattedDate = `${month}-${day}-${year}`;
+                      newCombinedValue = formattedDate;
+                    } else if (newTimeValue) {
+                      newCombinedValue = `;${newTimeValue}`;
+                    }
+                    
+                    handleInputChange(question.id, newCombinedValue);
+                  }}
+                  className="w-full p-2 border border-gray-300 rounded"
+                  required={question.required}
+                />
+              </div>
+            </div>
+          </div>
+        );
+      
       case 'address':
         return (
           <div className="space-y-2">
