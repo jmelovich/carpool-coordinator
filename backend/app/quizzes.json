@@ -1,93 +1,82 @@
 [
   {
-    "id": "personality_quiz",
-    "title": "Personality Assessment Quiz",
-    "description": "This quiz helps us understand your personality to match you with compatible carpool partners",
+    "id": "test_quiz",
+    "title": "Test Quiz",
+    "description": "This quiz demonstrates each question type available in our system.",
     "return_address": "/home",
     "questions": [
       {
         "id": "q1",
         "type": "short_text",
         "required": true,
-        "question": "What is your name?",
-        "universal_id": "users[id:<user_id>]@user_data->user_name"
+        "question": "What is your favorite color?",
+        "universal_id": "user_info[user_id:<user_id>]@misc_user_data->favorite_color"
       },
       {
         "id": "q2",
         "type": "dropdown",
         "required": true,
-        "question": "What is your preferred conversation style during carpool rides?",
-        "options": ["Quiet and focused", "Casual small talk", "Deep discussions", "Music only"],
-        "universal_id": "users[id:<user_id>]@user_data->conversation_style"
+        "question": "Choose your preferred mode of transport:",
+        "options": ["Car", "Bicycle", "Public Transport", "Walking"],
+        "universal_id": "user_info[user_id:<user_id>]@misc_user_data->transport_mode"
       },
       {
         "id": "q3",
         "type": "multiple_choice",
         "required": true,
-        "question": "What is your preferred carpool schedule?",
-        "options": ["Early morning (5-7am)", "Morning (7-9am)", "Afternoon (3-5pm)", "Evening (5-7pm)"],
-        "universal_id": "users[id:<user_id>]@user_data->carpool_schedule"
+        "question": "Select your preferred meal time:",
+        "options": ["Breakfast", "Lunch", "Dinner"],
+        "universal_id": "user_info[user_id:<user_id>]@misc_user_data->meal_time"
       },
       {
         "id": "q4",
         "type": "checkbox",
         "required": false,
-        "question": "Which of these apply to you?",
-        "options": ["I prefer to drive", "I prefer to be a passenger", "I'm flexible", "I have a pet that may travel with me"],
-        "universal_id": "users[id:<user_id>]@user_data->carpool_preferences"
+        "question": "Which hobbies do you enjoy?",
+        "options": ["Reading", "Traveling", "Cooking", "Sports"],
+        "universal_id": "user_info[user_id:<user_id>]@misc_user_data->hobbies"
       },
       {
         "id": "q5",
         "type": "long_text",
         "required": false,
-        "question": "Any additional information you'd like to share about your carpool preferences?",
-        "universal_id": "users[id:<user_id>]@user_data->additional_info"
-      }
-    ]
-  },
-  {
-    "id": "route_preference_quiz",
-    "title": "Route Preference Quiz",
-    "description": "This quiz helps us understand your travel preferences to find the best carpool matches",
-    "return_address": "/carpool",
-    "questions": [
+        "question": "Please describe your ideal vacation.",
+        "universal_id": "user_info[user_id:<user_id>]@misc_user_data->vacation_description"
+      },
       {
-        "id": "q1",
+        "id": "q6",
         "type": "address",
         "required": true,
-        "question": "What is your pickup address?",
-        "universal_id": "test[carpool_id:<carpool_id>]@driver_origin"
+        "question": "What is your current address?",
+        "universal_id": "user_info[user_id:<user_id>]@misc_user_data->current_address"
       },
       {
-        "id": "q2",
-        "type": "address",
+        "id": "q7",
+        "type": "date",
         "required": true,
-        "question": "What is your destination address?",
-        "universal_id": "test[carpool_id:<carpool_id>]@driver_destination"
+        "question": "What is your favorite date?",
+        "universal_id": "user_info[user_id:<user_id>]@misc_user_data->favorite_date"
       },
       {
-        "id": "q3",
-        "type": "dropdown",
+        "id": "q8",
+        "type": "time",
         "required": true,
-        "question": "How flexible are you with your departure time?",
-        "options": ["Very flexible (±30 minutes)", "Somewhat flexible (±15 minutes)", "Not flexible (exact time only)"],
-        "universal_id": "test[carpool_id:<carpool_id>]@carpool_data->departure_flexibility"
+        "question": "What is your favorite time?",
+        "universal_id": "user_info[user_id:<user_id>]@misc_user_data->favorite_time"
       },
       {
-        "id": "q4",
-        "type": "multiple_choice",
+        "id": "q9",
+        "type": "date_time",
         "required": true,
-        "question": "What is your preferred route type?",
-        "options": ["Fastest route", "Most scenic route", "Avoid highways", "Avoid toll roads"],
-        "universal_id": "test[carpool_id:<carpool_id>]@carpool_data->route_type"
+        "question": "What is your favorite date & time?",
+        "universal_id": "user_info[user_id:<user_id>]@misc_user_data->favorite_date_time"
       },
       {
-        "id": "q5",
-        "type": "checkbox",
-        "required": false,
-        "question": "Which amenities would you like in your carpool ride?",
-        "options": ["Air conditioning", "Heated seats", "Bluetooth connectivity", "Child car seat", "Trunk space for luggage"],
-        "universal_id": "test[carpool_id:<carpool_id>]@carpool_data->carpool_amenities"
+        "id": "q10",
+        "type": "integer",
+        "required": true,
+        "question": "What is your favorite number?",
+        "universal_id": "user_info[user_id:<user_id>]@misc_user_data->favorite_number"
       }
     ]
   },
@@ -139,7 +128,7 @@
     "id": "driver_info_quiz",
     "title": "Driver Information Collection",
     "description": "To be a driver (and host a carpool), please fill out the following information.",
-    "return_address": "/quiz?id=car_info_quiz",
+    "return_address": "/quiz?id=car_info_quiz&plate=<answer:q4>",
     "questions": [
       {
         "id": "q1",
@@ -162,6 +151,13 @@
         "question": "What is the State the license was issued in?",
         "options": ["AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA", "HI", "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD", "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ", "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI", "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY"],
         "universal_id": "driver_info[driver_id:<user_id>]@licensed_state"
+      },
+      {
+        "id": "q4",
+        "type": "short_text",
+        "required": true,
+        "question": "What is the license plate of the car you wish to use for this carpool?",
+        "universal_id": ""
       }
     ]
   }
@@ -174,52 +170,45 @@
     "questions": [
       {
         "id": "q1",
-        "type": "short_text",
-        "required": true,
-        "question": "What is the license plate number?",
-        "universal_id": "car_info[license_plate:<answer:q1>]@license_plate"
-      },
-      {
-        "id": "q2",
         "type": "dropdown",
         "required": true,
         "question": "In which state is the car registered?",
         "options": ["AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA", "HI", "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD", "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ", "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI", "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY"],
-        "universal_id": "car_info[license_plate:<answer:q1>]@registered_state"
+        "universal_id": "car_info[license_plate:<plate>]@registered_state"
+      },
+      {
+        "id": "q2",
+        "type": "short_text",
+        "required": true,
+        "question": "What is the make of the car (Honda, Mazda, etc...)?",
+        "universal_id": "car_info[license_plate:<plate>]@make"
       },
       {
         "id": "q3",
         "type": "short_text",
         "required": true,
-        "question": "What is the make of the car (Honda, Mazda, etc...)?",
-        "universal_id": "car_info[license_plate:<answer:q1>]@make"
+        "question": "What is the model of the car (Civic, Pilot, Mazda3, etc...)?",
+        "universal_id": "car_info[license_plate:<plate>]@model"
       },
       {
         "id": "q4",
-        "type": "short_text",
+        "type": "integer",
         "required": true,
-        "question": "What is the model of the car (Civic, Pilot, Mazda3, etc...)?",
-        "universal_id": "car_info[license_plate:<answer:q1>]@model"
+        "question": "What is the year of the car (2006, 1997, etc...)?",
+        "universal_id": "car_info[license_plate:<plate>]@year"
       },
       {
         "id": "q5",
         "type": "integer",
         "required": true,
-        "question": "What is the year of the car (2006, 1997, etc...)?",
-        "universal_id": "car_info[license_plate:<answer:q1>]@year"
-      },
-      {
-        "id": "q6",
-        "type": "integer",
-        "required": true,
         "question": "How many people can comfortably fit in the car (including you)?",
-        "universal_id": "car_info[license_plate:<answer:q1>]@max_capacity"
+        "universal_id": "car_info[license_plate:<plate>]@max_capacity"
       }
     ],
     "completion_operation": [
       {
         "value": "<user_id>",
-        "universal_id": "car_info[license_plate:<answer:q1>]@driver_id"
+        "universal_id": "car_info[license_plate:<plate>]@driver_id"
       }
     ]
   }

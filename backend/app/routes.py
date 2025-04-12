@@ -1,16 +1,16 @@
-from flask import jsonify, request
+from flask import jsonify, request, g
 from app import app, bcrypt
 from app.database import (
     create_user, get_user_by_id,
     get_user_by_username, get_user_by_email,
-    get_quiz_by_id, save_quiz_results, get_specific_user_data, init_app
+    get_quiz_by_id, save_quiz_results, get_specific_user_data, init_app, _substitute_context
 )
 from flask_jwt_extended import (
-    create_access_token, get_jwt_identity,
-    jwt_required
+    JWTManager, jwt_required, create_access_token, get_jwt_identity
 )
 from app.helper import is_valid_email, is_valid_password
 import json
+from datetime import datetime, timedelta
 
 init_app(app)
 
@@ -238,6 +238,24 @@ def save_quiz():
         context=context
     )
     
+    # Get quiz data to process return address with substitutions
+    processed_return_address = "/home"  # Default return address
+    try:
+        quiz_id = data['quiz_id']
+        quiz_data = get_quiz_by_id(quiz_id)
+        if quiz_data:
+            # Get return address from quiz data
+            quiz_json = json.loads(quiz_data['json']) if isinstance(quiz_data['json'], str) else quiz_data['json']
+            return_address = quiz_json.get('return_address', '/home')
+            
+            # Apply substitution for variables in return_address using our existing function
+            processed_return_address = _substitute_context(return_address, context)
+            print(f"Original return address: {return_address}")
+            print(f"Processed return address: {processed_return_address}")
+    except Exception as e:
+        print(f"Error processing return address: {e}")
+        # Use default if processing fails
+    
     # Return the detailed results
     if not result['success']:
         # Some or all operations failed
@@ -251,7 +269,8 @@ def save_quiz():
     return jsonify({
         'success': True,
         'message': result['message'],
-        'operations': result['operations']
+        'operations': result['operations'],
+        'return_address': processed_return_address  # Add the processed return address to the response
     }), 200
     
 

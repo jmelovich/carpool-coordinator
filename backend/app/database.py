@@ -134,8 +134,7 @@ def init_db():
                 username TEXT UNIQUE NOT NULL,
                 email TEXT UNIQUE NOT NULL,
                 password_hash TEXT NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                user_data TEXT -- Misc Data, Store as JSON text
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
         db.execute("CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);")
@@ -150,6 +149,7 @@ def init_db():
                 birth_date TEXT,
                 home_address TEXT,
                 sex TEXT,
+                misc_user_data TEXT,
                 FOREIGN KEY (user_id) REFERENCES users(id)
             )
         ''')
@@ -212,16 +212,6 @@ def init_db():
             )
         ''')
 
-        # Create test table if not exists
-        db.execute('''
-            CREATE TABLE IF NOT EXISTS test (
-                carpool_id TEXT PRIMARY KEY,
-                carpool_data TEXT, -- Store as JSON text
-                driver_origin TEXT,
-                driver_destination TEXT
-            )
-        ''')
-
         # Create quizzes table if not exists
         db.execute('''
             CREATE TABLE IF NOT EXISTS quizzes (
@@ -275,21 +265,20 @@ def init_app(app):
 
 def create_user(username: str, email: str, password: str) -> Optional[int]:
     """Create a new user."""
-    # Use app context for bcrypt if configured, else use placeholder
-    # bcrypt = getattr(current_app, 'bcrypt', None)
-    # if not bcrypt: raise RuntimeError("Bcrypt not initialized on Flask app")
-    # password_hash = bcrypt.generate_password_hash(password).decode('utf-8')
-    password_hash = generate_password_hash(password).decode('utf-8') # Using placeholder
+    password_hash = generate_password_hash(password).decode('utf-8')
 
     conn = get_db()
     try:
         cursor = execute_with_retry(
             conn,
-            'INSERT INTO users (username, email, password_hash, user_data) VALUES (?, ?, ?, ?)',
-            (username, email, password_hash, json.dumps({})) # Init user_data
+            'INSERT INTO users (username, email, password_hash) VALUES (?, ?, ?)',
+            (username, email, password_hash)
         )
+        user_id = cursor.lastrowid
+        
+            
         # Rely on close_db teardown to commit
-        return cursor.lastrowid
+        return user_id
     except sqlite3.IntegrityError:
         print(f"Integrity error creating user '{username}'/'{email}'. User likely exists.")
         # Rely on close_db teardown to rollback
@@ -304,16 +293,12 @@ def get_user_by_username(username: str) -> Optional[Dict]:
     try:
         cursor = execute_with_retry(
             conn,
-            'SELECT id, username, email, password_hash, created_at, user_data FROM users WHERE username = ?',
+            'SELECT id, username, email, password_hash, created_at FROM users WHERE username = ?',
             (username,)
         )
         user = cursor.fetchone()
         if user:
-            user_dict = dict(user)
-            try: # Safely parse JSON
-                user_dict['user_data'] = json.loads(user_dict['user_data']) if user_dict.get('user_data') else {}
-            except (json.JSONDecodeError, TypeError): user_dict['user_data'] = {}
-            return user_dict
+            return dict(user)
         else:
             return None
     except sqlite3.Error as e:
@@ -326,16 +311,12 @@ def get_user_by_id(user_id: int) -> Optional[Dict]:
     try:
         cursor = execute_with_retry(
             conn,
-            'SELECT id, username, email, created_at, user_data FROM users WHERE id = ?',
+            'SELECT id, username, email, created_at FROM users WHERE id = ?',
             (user_id,)
         )
         user = cursor.fetchone()
         if user:
-            user_dict = dict(user)
-            try: # Safely parse JSON
-                user_dict['user_data'] = json.loads(user_dict['user_data']) if user_dict.get('user_data') else {}
-            except (json.JSONDecodeError, TypeError): user_dict['user_data'] = {}
-            return user_dict
+            return dict(user)
         else:
             return None
     except sqlite3.Error as e:
@@ -348,16 +329,12 @@ def get_user_by_email(email: str) -> Optional[Dict]:
     try:
         cursor = execute_with_retry(
             conn,
-            'SELECT id, username, email, created_at, user_data FROM users WHERE email = ?',
+            'SELECT id, username, email, created_at FROM users WHERE email = ?',
             (email,)
         )
         user = cursor.fetchone()
         if user:
-            user_dict = dict(user)
-            try: # Safely parse JSON
-                user_dict['user_data'] = json.loads(user_dict['user_data']) if user_dict.get('user_data') else {}
-            except (json.JSONDecodeError, TypeError): user_dict['user_data'] = {}
-            return user_dict
+            return dict(user)
         else:
             return None
     except sqlite3.Error as e:
@@ -407,10 +384,25 @@ def parse_universal_id(universal_id: str) -> Dict:
         return None
 
 # Function for substituting values of variables fed in context into the universal id
-def _substitute_context(key_value: str, context: Optional[Dict]) -> str:
-    """Substitute <variable> placeholders in key_value using context and Flask g."""
-    if context and isinstance(key_value, str) and key_value.startswith('<') and key_value.endswith('>'):
-        var_name = key_value[1:-1]
+def _substitute_context(text: str, context: Optional[Dict]) -> str:
+    """Substitute <variable> placeholders in text using context and Flask g.
+    
+    This can be used for substituting variables in any text string including 
+    key_value in universal IDs, return_address in quizzes, etc.
+    
+    Args:
+        text: The text containing <variable> placeholders
+        context: Dictionary containing values for variables
+        
+    Returns:
+        String with placeholders replaced by values
+    """
+    if not context or not isinstance(text, str):
+        return str(text)
+        
+    # If it's a complete variable reference (entire string is a variable)
+    if text.startswith('<') and text.endswith('>'):
+        var_name = text[1:-1]
         
         # Check if this is an answer reference pattern <answer:qX>
         answer_match = re.match(r'answer:([a-zA-Z0-9_]+)', var_name)
@@ -421,7 +413,7 @@ def _substitute_context(key_value: str, context: Optional[Dict]) -> str:
             if question_id in answers:
                 return str(answers[question_id])
             print(f"Warning: Answer for question {question_id} not found in context")
-            return key_value  # Return original if answer not found
+            return text  # Return original if answer not found
             
         # Original functionality for other variables
         # Prioritize g, then context dict, fallback to original string
@@ -429,11 +421,40 @@ def _substitute_context(key_value: str, context: Optional[Dict]) -> str:
         if val_from_g is not None:
              return str(val_from_g)
         val_from_context = context.get(var_name)
-        print(f"Key value: {var_name}, Found in context: {val_from_context}")
+        # print(f"Key value: {var_name}, Found in context: {val_from_context}")
         if val_from_context is not None:
             return str(val_from_context)
-        return key_value # Variable not found, return placeholder
-    return str(key_value)
+        return text # Variable not found, return placeholder
+    
+    # For embedded variable references within a longer string
+    # Process <answer:qX> references embedded in the text
+    def substitute_refs(match):
+        var_ref = match.group(0)  # The entire match including <>
+        var_name = var_ref[1:-1]  # Remove < and >
+        
+        # Handle answer references
+        answer_match = re.match(r'answer:([a-zA-Z0-9_]+)', var_name)
+        if answer_match:
+            question_id = answer_match.group(1)
+            answers = context.get('answers', {}) or context.get('quiz_answers', {})
+            if question_id in answers:
+                return str(answers[question_id])
+            print(f"Warning: Answer for question {question_id} not found in context")
+            return var_ref
+        
+        # Handle other variables
+        val_from_g = g.get(var_name)
+        if val_from_g is not None:
+            return str(val_from_g)
+        val_from_context = context.get(var_name)
+        if val_from_context is not None:
+            return str(val_from_context)
+        return var_ref  # Keep original if not found
+    
+    # Apply substitution to any <var> pattern in the text
+    pattern = r'<[^>]+>'
+    result = re.sub(pattern, substitute_refs, text)
+    return result
 
 def get_data_for_universal_id(universal_id: str, context: Dict) -> Any:
     """Retrieve data for a given universal_id using context."""
@@ -602,17 +623,19 @@ def get_quiz_by_id(quiz_id: str) -> Optional[Dict]:
         return None
 
 def get_user_data(user_id: int) -> Dict:
-    """Retrieve and parse the user_data JSON for a user."""
+    """Retrieve and parse the misc_user_data JSON for a user from the user_info table."""
     conn = get_db()
     try:
-        cursor = execute_with_retry(conn, 'SELECT user_data FROM users WHERE id = ?', (user_id,))
+        cursor = execute_with_retry(conn, 'SELECT misc_user_data FROM user_info WHERE user_id = ?', (user_id,))
         row = cursor.fetchone()
-        if row and row['user_data']:
-            try: return json.loads(row['user_data'])
-            except (json.JSONDecodeError, TypeError): return {}
+        if row and row['misc_user_data']:
+            try: 
+                return json.loads(row['misc_user_data'])
+            except (json.JSONDecodeError, TypeError): 
+                return {}
         return {}
     except sqlite3.Error as e:
-        print(f"Error getting user_data for user ID {user_id}: {e}")
+        print(f"Error getting misc_user_data for user ID {user_id}: {e}")
         return {}
 
 
@@ -625,9 +648,20 @@ def save_quiz_results(user_id: int, results: Dict, context: Dict) -> Dict:
 
     operations_results = {'success': True, 'operations': [], 'message': ''}
     failed_ids = []
+    skipped_ids = []
 
     # Save regular quiz answers
     for universal_id, value in results.items():
+        # Skip empty universal_ids
+        if not universal_id or universal_id.strip() == "":
+            skipped_ids.append("empty_id")
+            operations_results['operations'].append({
+                'universal_id': 'empty_id', 
+                'success': True,
+                'message': 'Skipped (empty universal_id)'
+            })
+            continue
+            
         success = save_data_for_universal_id(universal_id, value, context)
         operations_results['operations'].append({
             'universal_id': universal_id, 'success': success,
@@ -653,8 +687,18 @@ def save_quiz_results(user_id: int, results: Dict, context: Dict) -> Dict:
                         raw_value = operation['value']
                         value = _substitute_context(raw_value, context)
                         
-                        # Save the value using the universal_id
+                        # Skip empty universal_ids in completion operations too
                         universal_id = operation['universal_id']
+                        if not universal_id or universal_id.strip() == "":
+                            skipped_ids.append("empty_completion_id")
+                            operations_results['operations'].append({
+                                'universal_id': 'empty_completion_id', 
+                                'success': True,
+                                'message': 'Skipped completion operation (empty universal_id)'
+                            })
+                            continue
+                        
+                        # Save the value using the universal_id
                         success = save_data_for_universal_id(universal_id, value, context)
                         
                         operations_results['operations'].append({
@@ -674,7 +718,10 @@ def save_quiz_results(user_id: int, results: Dict, context: Dict) -> Dict:
     if not operations_results['success']:
         operations_results['message'] = f'Failed to save results for: {", ".join(failed_ids)}'
     else:
-        operations_results['message'] = 'All results saved successfully.'
+        if skipped_ids:
+            operations_results['message'] = f'All results saved successfully. Skipped {len(skipped_ids)} empty universal IDs.'
+        else:
+            operations_results['message'] = 'All results saved successfully.'
     # Rely on close_db to commit/rollback
 
     close_db()

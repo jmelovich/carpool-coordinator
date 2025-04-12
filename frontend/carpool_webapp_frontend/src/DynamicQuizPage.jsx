@@ -216,9 +216,15 @@ function DynamicQuizPage() {
         throw new Error(`Failed to save quiz: ${response.status}`);
       }
       
+      const responseData = await response.json();
       alert("Quiz submitted successfully!");
-      // Navigate to the return address
-      navigate(returnAddress);
+      
+      // Use the processed return_address from response if available, otherwise fall back to the stored returnAddress
+      const targetAddress = responseData.return_address || returnAddress;
+      console.log("Navigating to:", targetAddress);
+      
+      // Navigate to the processed return address
+      navigate(targetAddress);
     } catch (error) {
       console.error('Error saving quiz answers:', error);
       setError('Failed to save quiz answers. Please try again.');
