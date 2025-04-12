@@ -2,11 +2,9 @@
 
 import sqlite3
 from pathlib import Path
-# Assuming Flask-Bcrypt is used, bcrypt object would be initialized in app factory
-# Example: from flask import current_app # then use current_app.bcrypt
-# For standalone testing, you might need a placeholder:
+
 try:
-    from flask_bcrypt import generate_password_hash # Example placeholder
+    from flask_bcrypt import generate_password_hash
 except ImportError:
     print("Warning: Flask-Bcrypt not installed. Hashing will fail.")
     # Define a dummy hash function if needed for testing without bcrypt
@@ -137,53 +135,80 @@ def init_db():
                 email TEXT UNIQUE NOT NULL,
                 password_hash TEXT NOT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                user_data TEXT -- Store as JSON text
+                user_data TEXT -- Misc Data, Store as JSON text
             )
         ''')
         db.execute("CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);")
         db.execute("CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);")
-
-        # Create queue table if not exists
+        
+        # Create users info table if not exists
         db.execute('''
-            CREATE TABLE IF NOT EXISTS queue (
-                id_queue INTEGER PRIMARY KEY AUTOINCREMENT,
-                username TEXT UNIQUE NOT NULL,
-                email TEXT UNIQUE NOT NULL,
-                occupation_preference TEXT NOT NULL,
-                personality_preference TEXT NOT NULL,
-                occupation_current TEXT NOT NULL,
-                personality_current TEXT NOT NULL,
-                is_passenger BOOLEAN NOT NULL,
-                origin TEXT NOT NULL,
-                destination TEXT NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (username) REFERENCES users(username) ON DELETE CASCADE,
-                FOREIGN KEY (email) REFERENCES users(email) ON DELETE CASCADE
+            CREATE TABLE IF NOT EXISTS user_info (
+                user_id INTEGER PRIMARY KEY,
+                given_name TEXT,
+                surname TEXT,
+                birth_date TEXT,
+                home_address TEXT,
+                sex TEXT,
+                FOREIGN KEY (user_id) REFERENCES users(id)
             )
         ''')
-        db.execute("CREATE INDEX IF NOT EXISTS idx_queue_origin ON queue(origin);")
-        db.execute("CREATE INDEX IF NOT EXISTS idx_queue_destination ON queue(destination);")
 
         # Create carpool table if not exists
         db.execute('''
-            CREATE TABLE IF NOT EXISTS carpool (
-                id_carpool INTEGER PRIMARY KEY AUTOINCREMENT,
-                username_passenger TEXT UNIQUE NOT NULL,
-                email_passenger TEXT UNIQUE NOT NULL,
-                username_driver TEXT UNIQUE NOT NULL,
-                email_driver TEXT UNIQUE NOT NULL,
-                driver_car_make TEXT NOT NULL,
-                driver_car_license_plate TEXT NOT NULL,
-                driver_car_color TEXT NOT NULL,
-                driver_origin TEXT NOT NULL,
-                passenger_origin TEXT NOT NULL,
-                driver_destination TEXT NOT NULL,
-                passenger_destination TEXT NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (username_passenger) REFERENCES users(username) ON DELETE CASCADE,
-                FOREIGN KEY (email_passenger) REFERENCES users(email) ON DELETE CASCADE,
-                FOREIGN KEY (username_driver) REFERENCES users(username) ON DELETE CASCADE,
-                FOREIGN KEY (email_driver) REFERENCES users(email) ON DELETE CASCADE
+            CREATE TABLE IF NOT EXISTS carpool_list (
+                carpool_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                driver_id INTEGER,
+                route_origin TEXT,  -- Driver Origin Address
+                route_destination TEXT, -- Driver Destination Address
+                arrive_by TEXT, -- Latest Time Driver Can Arrive At Destination
+                leave_earliest TEXT, -- Earliest Time Driver Can Leave Origin
+                carpool_capacity INTEGER, -- Max Amount of Passengers
+                misc_data TEXT, -- JSON String Storing Other Information About Carpool
+                FOREIGN KEY (driver_id) REFERENCES users(id)          
+            )
+        ''')
+        
+        # Create carpool passengers table if not exists
+        db.execute('''
+            CREATE TABLE IF NOT EXISTS carpool_passengers (
+                carpool_id INTEGER,
+                passenger_id INTEGER,
+                pickup_location TEXT,
+                pickup_time TEXT,
+                dropoff_location TEXT,
+                dropoff_time TEXT,
+                misc_data TEXT, -- JSON String For Storing Misc Info About Passenger (relevant only to this carpool trip)
+                PRIMARY KEY (carpool_id, passenger_id),
+                FOREIGN KEY (carpool_id) REFERENCES carpool_list(carpool_id),
+                FOREIGN KEY (passenger_id) REFERENCES users(id)
+            )
+        ''')
+        
+        # Create driver info table if not exists
+        db.execute('''
+            CREATE TABLE IF NOT EXISTS driver_info (
+                driver_id INTEGER PRIMARY KEY,
+                dln TEXT, -- Drivers License Number
+                license_expiration TEXT, -- license expiration date
+                licensed_state TEXT, -- State Driver Is Licensed To Drive In
+                misc_data TEXT, -- catch-all for other relevant driver info as JSON String
+                FOREIGN KEY (driver_id) REFERENCES users(id)
+            )
+        ''')
+        
+        # Create car info table if not exists
+        db.execute('''
+            CREATE TABLE IF NOT EXISTS car_info (
+                license_plate TEXT PRIMARY KEY, -- Car License Plate Number
+                driver_id INTEGER,
+                registered_state TEXT, -- the state where the car is registered
+                make TEXT, -- Company who made the car
+                model TEXT, -- Model of the car 
+                year INTEGER, -- Year of the car
+                max_capacity INTEGER, -- the number of people who can fit including driver
+                misc_data TEXT, -- catch all field for misc car info as JSON string
+                FOREIGN KEY (driver_id) REFERENCES users(id)                
             )
         ''')
 
@@ -339,103 +364,10 @@ def get_user_by_email(email: str) -> Optional[Dict]:
         print(f"Error getting user by email {email}: {e}")
         return None
 
-# --- Queue & Carpool Functions ---
+# --- Carpool Functions ---
 
-def queue_passenger_or_driver(username: str, occupation_preference: str, personality_preference: str, occupation_current: str, personality_current: str, is_passenger: bool, origin: str, destination: str) -> Optional[int]:
-    """Queue a user (passenger or driver)."""
-    conn = get_db()
-    try:
-        cursor_email = execute_with_retry(conn, 'SELECT email FROM users WHERE username = ?', (username,))
-        user_row = cursor_email.fetchone()
-        if not user_row:
-            print(f"Error queuing: User '{username}' not found.")
-            return None
-        user_email = user_row['email']
 
-        cursor = execute_with_retry(
-            conn,
-            '''INSERT INTO queue (username, email, occupation_preference, personality_preference,
-                                 occupation_current, personality_current, is_passenger,
-                                 origin, destination)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-            (username, user_email, occupation_preference, personality_preference, occupation_current,
-             personality_current, is_passenger, origin, destination)
-        )
-        # Rely on close_db to commit
-        return cursor.lastrowid
-    except sqlite3.IntegrityError:
-        print(f"Integrity error queuing user {username}. Already in queue or FK constraint violated?")
-        return None # Rely on close_db to rollback
-    except sqlite3.Error as e:
-        print(f"Error queuing user {username}: {e}")
-        return None # Rely on close_db to rollback
 
-def create_carpool(username_passenger: str, username_driver: str, driver_car_make: str, driver_car_license_plate: str, driver_car_color: str, driver_origin: str, passenger_origin: str, driver_destination: str, passenger_destination: str) -> Optional[int]:
-    """Create a carpool entry."""
-    conn = get_db()
-    try:
-        cursor_emails = execute_with_retry(
-            conn,
-            '''SELECT u1.email AS passenger_email, u2.email AS driver_email
-               FROM users u1, users u2
-               WHERE u1.username = ? AND u2.username = ?''',
-            (username_passenger, username_driver)
-        )
-        email_row = cursor_emails.fetchone()
-        if not email_row:
-            print(f"Error creating carpool: Passenger '{username_passenger}' or Driver '{username_driver}' not found.")
-            return None
-        passenger_email = email_row['passenger_email']
-        driver_email = email_row['driver_email']
-
-        cursor = execute_with_retry(
-            conn,
-            '''INSERT INTO carpool (username_passenger, email_passenger, username_driver, email_driver,
-                                   driver_car_make, driver_car_license_plate, driver_car_color,
-                                   driver_origin, passenger_origin, driver_destination, passenger_destination)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-            (username_passenger, passenger_email, username_driver, driver_email, driver_car_make,
-             driver_car_license_plate, driver_car_color, driver_origin, passenger_origin,
-             driver_destination, passenger_destination)
-        )
-        # Rely on close_db to commit
-        return cursor.lastrowid
-    except sqlite3.IntegrityError:
-        print(f"Integrity error creating carpool for {username_passenger}/{username_driver}. Duplicate entry or FK constraint?")
-        return None # Rely on close_db to rollback
-    except sqlite3.Error as e:
-        print(f"Error creating carpool for {username_passenger}/{username_driver}: {e}")
-        return None # Rely on close_db to rollback
-
-def unqueue_passenger_or_driver_by_user(username: str) -> str:
-    """Unqueue a user by username. Returns 'Success', 'Unsuccessful', or 'Error'."""
-    conn = get_db()
-    try:
-        cursor = execute_with_retry(
-            conn,
-            'DELETE FROM queue WHERE username = ?',
-            (username,)
-        )
-        # Rely on close_db to commit
-        return "Success" if cursor.rowcount > 0 else "Unsuccessful"
-    except sqlite3.Error as e:
-        print(f"Error unqueuing user {username}: {e}")
-        return "Error" # Rely on close_db to rollback
-
-def delete_carpool_ride(username_passenger: str, username_driver: str) -> str:
-    """Delete a carpool ride. Returns 'Success', 'Unsuccessful', or 'Error'."""
-    conn = get_db()
-    try:
-        cursor = execute_with_retry(
-            conn,
-            'DELETE FROM carpool WHERE username_passenger = ? AND username_driver = ?',
-            (username_passenger, username_driver)
-        )
-        # Rely on close_db to commit
-        return "Success" if cursor.rowcount > 0 else "Unsuccessful"
-    except sqlite3.Error as e:
-        print(f"Error deleting carpool for {username_passenger}/{username_driver}: {e}")
-        return "Error" # Rely on close_db to rollback
 
 # --- QUIZ FUNCTIONS (Universal ID Handling) ---
 
@@ -474,6 +406,7 @@ def parse_universal_id(universal_id: str) -> Dict:
         print(f"Error parsing universal_id '{universal_id}': {e}")
         return None
 
+# Function for substituting values of variables fed in context into the universal id
 def _substitute_context(key_value: str, context: Optional[Dict]) -> str:
     """Substitute <variable> placeholders in key_value using context and Flask g."""
     if context and isinstance(key_value, str) and key_value.startswith('<') and key_value.endswith('>'):

@@ -90,5 +90,49 @@
         "universal_id": "test[carpool_id:<carpool_id>]@carpool_data->carpool_amenities"
       }
     ]
+  },
+  {
+    "id": "user_info_quiz",
+    "title": "User Information Collection",
+    "description": "Please fill out the following questions.",
+    "return_address": "/home",
+    "questions": [
+      {
+        "id": "q1",
+        "type": "short_text",
+        "required": true,
+        "question": "What is your given (first) name?",
+        "universal_id": "user_info[user_id:<user_id>]@given_name"
+      },
+      {
+        "id": "q2",
+        "type": "short_text",
+        "required": true,
+        "question": "What is your surname (last name)?",
+        "universal_id": "user_info[user_id:<user_id>]@surname"
+      },
+      {
+        "id": "q3",
+        "type": "multiple_choice",
+        "required": true,
+        "question": "What is your sex (as shown on driver's license)?",
+        "options": ["Male", "Female"],
+        "universal_id": "user_info[user_id:<user_id>]@sex"
+      },
+      {
+        "id": "q4",
+        "type": "date",
+        "required": true,
+        "question": "When is your birth date?",
+        "universal_id": "user_info[user_id:<user_id>]@birth_date"
+      },
+      {
+        "id": "q5",
+        "type": "address",
+        "required": true,
+        "question": "What is your primary address?",
+        "universal_id": "user_info[user_id:<user_id>]@home_address"
+      }
+    ]
   }
 ]
