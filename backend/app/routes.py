@@ -3,7 +3,8 @@ from app import app, bcrypt
 from app.database import (
     create_user, get_user_by_id,
     get_user_by_username, get_user_by_email,
-    get_quiz_by_id, save_quiz_results, get_specific_user_data, init_app, _substitute_context
+    get_quiz_by_id, save_quiz_results, get_specific_user_data, init_app, _substitute_context,
+    reserve_carpool_listing_id
 )
 from flask_jwt_extended import (
     JWTManager, jwt_required, create_access_token, get_jwt_identity
@@ -239,7 +240,7 @@ def save_quiz():
     )
     
     # Get quiz data to process return address with substitutions
-    processed_return_address = "/home"  # Default return address
+    processed_return_address = "/home"
     try:
         quiz_id = data['quiz_id']
         quiz_data = get_quiz_by_id(quiz_id)
@@ -272,6 +273,25 @@ def save_quiz():
         'operations': result['operations'],
         'return_address': processed_return_address  # Add the processed return address to the response
     }), 200
+
+# Carpool routes
+@app.route('/api/carpool/reserve', methods=['POST'])
+@jwt_required()
+def reserve_carpool():
+    """Reserve a new carpool listing ID for the current user (protected route)"""
+    # Get current user ID from JWT token
+    current_user_id = int(get_jwt_identity())
+    
+    # Create new carpool listing with just the driver_id
+    carpool_id = reserve_carpool_listing_id(current_user_id)
+    
+    if not carpool_id:
+        return jsonify({'error': 'Failed to reserve carpool listing ID'}), 500
+    
+    return jsonify({
+        'message': 'Carpool listing ID reserved successfully',
+        'carpool_id': carpool_id
+    }), 201
     
 
 

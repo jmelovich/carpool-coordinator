@@ -212,4 +212,68 @@
       }
     ]
   }
+  ,
+  {
+    "id": "create_carpool",
+    "title": "Create a New Carpool Listing",
+    "description": "Please fill out the following questions to create your carpool listing.",
+    "return_address": "/carpool",
+    "questions": [
+      {
+        "id": "q1",
+        "type": "address",
+        "required": true,
+        "question": "Where are you going?",
+        "universal_id": "carpool_list[carpool_id:<new_listing_id>]@route_destination"
+      },
+      {
+        "id": "q2",
+        "type": "date_time",
+        "required": true,
+        "question": "When do do you need to be there by?",
+        "universal_id": "carpool_list[carpool_id:<new_listing_id>]@arrive_by"
+      },
+      {
+        "id": "q3",
+        "type": "address",
+        "required": true,
+        "question": "Where do you leave from?",
+        "universal_id": "carpool_list[carpool_id:<new_listing_id>]@route_origin"
+      },
+      {
+        "id": "q4",
+        "type": "date_time",
+        "required": true,
+        "question": "When is the earliest you can leave by?",
+        "universal_id": "carpool_list[carpool_id:<new_listing_id>]@leave_earliest"
+      },
+      {
+        "id": "q5",
+        "type": "integer",
+        "required": true,
+        "question": "How many passengers can you include?",
+        "universal_id": "carpool_list[carpool_id:<new_listing_id>]@carpool_capacity"
+      }
+    ],
+    "completion_operation": [
+      {
+        "value": "<user_id>",
+        "universal_id": "carpool_list[carpool_id:<new_listing_id>]@driver_id"
+      }
+    ],
+    "preconditions": [
+      {
+        "value1": "<user_id>",
+        "condition": "==",
+        "value2": "carpool_list[carpool_id:<new_listing_id>]@driver_id",
+        "failure_message": "You attempted to create a carpool with an invalid ID!"
+      },
+      {
+        "value1": "carpool_list[carpool_id:<new_listing_id>]@route_destination",
+        "condition": "==",
+        "value2": "NULL",
+        "failure_message": "You attempted to overwrite an existing carpool!"
+      }
+    ]
+  }
 ]

@@ -212,11 +212,18 @@ function DynamicQuizPage() {
         }),
       });
       
+      const responseData = await response.json();
+      
       if (!response.ok) {
-        throw new Error(`Failed to save quiz: ${response.status}`);
+        // Check if there's a precondition failure message
+        if (responseData.message) {
+          setError(`Failed to save quiz: ${responseData.message}`);
+        } else {
+          throw new Error(`Failed to save quiz: ${response.status}`);
+        }
+        return;
       }
       
-      const responseData = await response.json();
       alert("Quiz submitted successfully!");
       
       // Use the processed return_address from response if available, otherwise fall back to the stored returnAddress

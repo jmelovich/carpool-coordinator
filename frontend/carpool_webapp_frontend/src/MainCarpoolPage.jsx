@@ -55,8 +55,33 @@ function MainCarpoolPage({ onLogout }) {
     navigate('/home');
   };
 
-  const handleCreateCarpool = () => {
-    navigate('/create-carpool');
+  const handleCreateCarpool = async () => {
+    try {
+      const accessToken = Cookies.get('access_token');
+      if (!accessToken) {
+        navigate('/'); // Redirect to login if no token
+        return;
+      }
+
+      const response = await fetch('http://127.0.0.1:5000/api/carpool/reserve', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to reserve carpool listing ID');
+      }
+
+      const data = await response.json();
+      const newListingId = data.carpool_id;
+      navigate(`/quiz?id=create_carpool&new_listing_id=${newListingId}`);
+    } catch (error) {
+      console.error('Error creating carpool:', error);
+      setError('Failed to create carpool. Please try again.');
+    }
   };
 
   return (
@@ -91,22 +116,13 @@ function MainCarpoolPage({ onLogout }) {
           </div>
         )}
 
-        {/* Placeholder for Dynamic Questions/Form */}
-        <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
-          <h2 className="text-xl font-semibold text-[#264653] mb-4">
-            Find Your Ride
-          </h2>
-          <p className="text-gray-600">
-            {/* This section will dynamically ask questions to find suitable carpools. */}
-            {/* Example: Input fields for destination, time, preferences, etc. */}
-            {/* For now, it's a placeholder. */}
-            (Questionnaire area - to be implemented)
-          </p>
-        </div>
-
         {/* Placeholder for Carpool List and Create Button */}
         <div className="bg-white rounded-lg shadow-lg p-6">
-           {/* Fixed Create Carpool Button */}
+           <h2 className="text-xl font-semibold text-[#264653] mb-4">
+            Available Carpools
+           </h2>
+           
+           {/* Create Carpool Button */}
            <div className="mb-4 border-b pb-4">
              <button
                 onClick={handleCreateCarpool}
@@ -114,11 +130,8 @@ function MainCarpoolPage({ onLogout }) {
               >
                 Create New Carpool
              </button>
-            </div>
+           </div>
 
-           <h2 className="text-xl font-semibold text-[#264653] mb-4">
-            Available Carpools
-          </h2>
           {/* Scrollable List Area */}
           <div className="overflow-y-auto h-96"> {/* Example fixed height + scroll */}
             <p className="text-gray-600">

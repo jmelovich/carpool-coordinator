@@ -165,6 +165,7 @@ def init_db():
                 leave_earliest TEXT, -- Earliest Time Driver Can Leave Origin
                 carpool_capacity INTEGER, -- Max Amount of Passengers
                 misc_data TEXT, -- JSON String Storing Other Information About Carpool
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (driver_id) REFERENCES users(id)          
             )
         ''')
@@ -343,8 +344,29 @@ def get_user_by_email(email: str) -> Optional[Dict]:
 
 # --- Carpool Functions ---
 
-
-
+def reserve_carpool_listing_id(driver_id: int) -> Optional[int]:
+    """Create a new carpool listing with just the driver_id field.
+    
+    Args:
+        driver_id: The user ID of the driver
+        
+    Returns:
+        The new carpool_id if successful, None otherwise
+    """
+    conn = get_db()
+    try:
+        cursor = execute_with_retry(
+            conn,
+            'INSERT INTO carpool_list (driver_id) VALUES (?)',
+            (driver_id,)
+        )
+        carpool_id = cursor.lastrowid
+        
+        # Rely on close_db teardown to commit
+        return carpool_id
+    except sqlite3.Error as e:
+        print(f"Error creating carpool listing for driver ID {driver_id}: {e}")
+        return None # Rely on close_db teardown to rollback
 
 # --- QUIZ FUNCTIONS (Universal ID Handling) ---
 
@@ -638,6 +660,91 @@ def get_user_data(user_id: int) -> Dict:
         print(f"Error getting misc_user_data for user ID {user_id}: {e}")
         return {}
 
+def _evaluate_precondition(precondition: Dict, context: Dict) -> Tuple[bool, Optional[str]]:
+    """Evaluate a precondition object and return if it passed and any failure message.
+    
+    Args:
+        precondition: Dictionary containing value1, condition, value2, and optional failure_message
+        context: Dictionary containing values for variables
+        
+    Returns:
+        Tuple (passed, failure_message)
+    """
+    if not isinstance(precondition, dict):
+        return False, "Invalid precondition format"
+    
+    # Check that required fields are present
+    if not all(key in precondition for key in ['value1', 'condition', 'value2']):
+        return False, "Precondition missing required fields"
+    
+    # Handle context substitution for value1 and value2
+    value1 = precondition['value1']
+    value2 = precondition['value2']
+    
+    # Handle universal_id format for value1
+    if isinstance(value1, str) and re.match(r'[^[]+\[[^:]+:[^\]]+\]@[^->]+(->(.+))?', value1):
+        # This is a universal_id, get its value from the database
+        try:
+            value1 = get_data_for_universal_id(value1, context)
+        except Exception as e:
+            print(f"Error getting data for universal_id in precondition: {e}")
+            value1 = ""
+    else:
+        # Regular context substitution
+        value1 = _substitute_context(str(value1), context)
+        
+    # Handle universal_id format for value2
+    if isinstance(value2, str) and re.match(r'[^[]+\[[^:]+:[^\]]+\]@[^->]+(->(.+))?', value2):
+        # This is a universal_id, get its value from the database
+        try:
+            value2 = get_data_for_universal_id(value2, context)
+        except Exception as e:
+            print(f"Error getting data for universal_id in precondition: {e}")
+            value2 = ""
+    else:
+        # Regular context substitution
+        value2 = _substitute_context(str(value2), context)  
+
+    # Handle special NULL value
+    if isinstance(value1, str) and value1.upper() == "NULL":
+        value1 = None
+    if isinstance(value2, str) and value2.upper() == "NULL":
+        value2 = None
+        
+    if not value1:
+        value1 = None
+    if not value2:
+        value2 = None
+    
+    # Get the condition operator
+    condition = precondition['condition']
+   
+    # Evaluate the condition
+    passed = False
+    try:
+        if condition == "==":
+            passed = str(value1) == str(value2)
+        elif condition == "!=":
+            passed = str(value1) != str(value2)
+        elif condition == ">":
+            passed = float(value1) > float(value2)
+        elif condition == "<":
+            passed = float(value1) < float(value2)
+        elif condition == ">=":
+            passed = float(value1) >= float(value2)
+        elif condition == "<=":
+            passed = float(value1) <= float(value2)
+        else:
+            return False, f"Unsupported condition: {condition}"
+    except (ValueError, TypeError) as e:
+        print(f"Error evaluating condition: {e} (values: {value1}, {value2})")
+        return False, f"Error evaluating condition: values not comparable"
+    
+    print(passed)
+    
+    # Return result and any failure message
+    failure_message = precondition.get('failure_message') if not passed else None
+    return passed, failure_message
 
 def save_quiz_results(user_id: int, results: Dict, context: Dict) -> Dict:
     """Save quiz results, handling different universal_id formats."""
@@ -649,6 +756,30 @@ def save_quiz_results(user_id: int, results: Dict, context: Dict) -> Dict:
     operations_results = {'success': True, 'operations': [], 'message': ''}
     failed_ids = []
     skipped_ids = []
+
+    # Check preconditions if present in quiz data
+    quiz_id = context.get('quiz_id')
+    if quiz_id:
+        try:
+            quiz_data = get_quiz_by_id(quiz_id)
+            if quiz_data and 'json' in quiz_data:
+                quiz_json = json.loads(quiz_data['json']) if isinstance(quiz_data['json'], str) else quiz_data['json']
+                preconditions = quiz_json.get('preconditions', [])
+                
+                # Process each precondition
+                for precondition in preconditions:
+                    passed, failure_message = _evaluate_precondition(precondition, context)
+                    
+                    if not passed:
+                        # Precondition failed, return without saving anything
+                        operations_results['success'] = False
+                        operations_results['message'] = failure_message or 'A precondition check failed'
+                        return operations_results
+        except Exception as e:
+            print(f"Error processing preconditions: {e}")
+            operations_results['success'] = False
+            operations_results['message'] = f'Error in precondition checking: {str(e)}'
+            return operations_results
 
     # Save regular quiz answers
     for universal_id, value in results.items():
