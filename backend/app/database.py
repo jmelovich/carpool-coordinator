@@ -937,6 +937,12 @@ def save_data_for_universal_id(universal_id: str, value: Any, context: Dict) -> 
         variable_name = parsed['variable_name']
         # Update context with the new value
         context[variable_name] = value
+        # Also update Flask g for the current request if available
+        try:
+            setattr(g, variable_name, value)
+        except RuntimeError:
+            # Not in a Flask request context
+            pass
         print(f"Updated context with {variable_name}={value}")
         return True
 
@@ -1255,9 +1261,34 @@ def save_quiz_results(user_id: int, results: Dict, context: Dict) -> Dict:
                 # Process each completion operation
                 for operation in completion_operations:
                     if 'value' in operation and 'universal_id' in operation:
+                        # Check conditions if they exist
+                        if 'conditions' in operation and isinstance(operation['conditions'], list):
+                            # Skip this operation if any condition fails
+                            all_conditions_met = True
+                            for condition in operation['conditions']:
+                                passed, _ = _evaluate_precondition(condition, context)
+                                if not passed:
+                                    all_conditions_met = False
+                                    break
+                            
+                            if not all_conditions_met:
+                                print(f"Skipping completion operation for {operation['universal_id']} - conditions not met")
+                                continue
+                                
                         # Substitute context variables in value
                         raw_value = operation['value']
-                        value = _substitute_context(raw_value, context)
+                        
+                        # Check if value is a universal_id
+                        if re.match(r'[^[]+\[[^:]+:[^\]]+\]@[^->]+(->(.+))?', raw_value):
+                            # Get data from another universal_id
+                            value = get_data_for_universal_id(raw_value, context)
+                        elif raw_value.startswith('<') and raw_value.endswith('>'):
+                            # Get value from context directly
+                            var_name = raw_value[1:-1]
+                            value = context.get(var_name, "")
+                        else:
+                            # Substitute context in the literal value
+                            value = _substitute_context(raw_value, context)
                         
                         # Skip empty universal_ids in completion operations too
                         universal_id = operation['universal_id']

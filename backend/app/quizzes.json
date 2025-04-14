@@ -128,7 +128,7 @@
     "id": "driver_info_quiz",
     "title": "Driver Information Collection",
     "description": "To be a driver (and host a carpool), please fill out the following information.",
-    "return_address": "/quiz?id=car_info_quiz&plate=<answer:q4>",
+    "return_address": "<return_override>",
     "questions": [
       {
         "id": "q1",
@@ -151,13 +151,47 @@
         "question": "What is the State the license was issued in?",
         "options": ["AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA", "HI", "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD", "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ", "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI", "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY"],
         "universal_id": "driver_info[driver_id:<user_id>]@licensed_state"
-      },
+      }
+    ],
+    "conditional_questions": [
       {
         "id": "q4",
-        "type": "short_text",
-        "required": true,
-        "question": "What is the license plate of the car you wish to use for this carpool?",
-        "universal_id": ""
+        "type": "dropdown",
+        "required": false,
+        "question": "Which car will you be using for this carpool? (Leave blank to register a new car)",
+        "options": "car_info[driver_id:<user_id>]@license_plate",
+        "conditions": [      
+          {
+            "value1": "<creating_carpool>",
+            "condition": "==",
+            "value2": "true"
+          }
+        ],
+        "universal_id": "<plate>"
+      }
+    ],
+    "completion_operation": [
+      {
+        "value": "/quiz?id=car_info_quiz&plate=<plate>&creating_carpool=true",
+        "universal_id": "<return_override>",
+        "conditions": [
+          {
+            "value1": "<creating_carpool>",
+            "condition": "==",
+            "value2": "true"
+          }
+        ]
+      },
+      {
+        "value": "/profile",
+        "universal_id": "<return_override>",
+        "conditions": [
+          {
+            "value1": "<creating_carpool>",
+            "condition": "==",
+            "value2": ""
+          }
+        ]
       }
     ]
   }

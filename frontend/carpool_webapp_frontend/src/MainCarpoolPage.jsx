@@ -85,7 +85,7 @@ function MainCarpoolPage({ onLogout }) {
       }
       
       if (!missingInfoData.driver_info.isComplete) {
-        navigate(`/quiz?id=${missingInfoData.driver_info.quiz_id}`);
+        navigate(`/quiz?id=${missingInfoData.driver_info.quiz_id}&creating_carpool=true`);
         return;
       }
 

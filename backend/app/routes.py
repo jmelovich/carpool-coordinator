@@ -269,7 +269,7 @@ def get_quiz():
         return jsonify({
             'quiz_id': quiz_data['quiz_id'],
             'json': quiz_data['json'],
-            'return_address': quiz_data['return_address'],
+            'return_address': _substitute_context(quiz_data['return_address'], context),
             'existing_answers': existing_answers
         })
     except json.JSONDecodeError:
@@ -378,8 +378,20 @@ def save_quiz():
             quiz_json = json.loads(quiz_data['json']) if isinstance(quiz_data['json'], str) else quiz_data['json']
             return_address = quiz_json.get('return_address', '/home')
             
-            # Apply substitution for variables in return_address using our existing function
-            processed_return_address = _substitute_context(return_address, context)
+            # Check if the return address is a special variable like <return_override>
+            if return_address.startswith('<') and return_address.endswith('>'):
+                var_name = return_address[1:-1]
+                if var_name in context:
+                    # Use the overridden value directly
+                    processed_return_address = context[var_name]
+                    print(f"Using return_override: {processed_return_address}")
+                else:
+                    # Apply standard substitution
+                    processed_return_address = _substitute_context(return_address, context)
+            else:
+                # Apply standard substitution
+                processed_return_address = _substitute_context(return_address, context)
+                
             print(f"Original return address: {return_address}")
             print(f"Processed return address: {processed_return_address}")
     except Exception as e:
