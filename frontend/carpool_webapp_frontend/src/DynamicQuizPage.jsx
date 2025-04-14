@@ -87,7 +87,16 @@ function DynamicQuizPage() {
     const fetchQuizData = async () => {
       try {
         console.log("Fetching quiz data for ID:", id);
-        const response = await fetch(`http://127.0.0.1:5000/api/quiz/get?quiz_id=${id}`, {
+        
+        // Build query string with all URL parameters
+        const queryString = new URLSearchParams({
+          quiz_id: id,
+          ...allParams // Use the local allParams variable directly
+        }).toString();
+        
+        console.log("Fetching quiz with query string:", queryString);
+        
+        const response = await fetch(`http://127.0.0.1:5000/api/quiz/get?${queryString}`, {
           method: 'GET',
           headers: {
             'Authorization': `Bearer ${accessToken}`,

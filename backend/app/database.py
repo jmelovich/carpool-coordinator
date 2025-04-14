@@ -163,6 +163,7 @@ def init_db():
                 route_destination TEXT, -- Driver Destination Address
                 arrive_by TEXT, -- Latest Time Driver Can Arrive At Destination
                 leave_earliest TEXT, -- Earliest Time Driver Can Leave Origin
+                vehicle_license_plate TEXT, -- License Plate of Vehicle Driver Will Be Using
                 carpool_capacity INTEGER, -- Max Amount of Passengers
                 misc_data TEXT, -- JSON String Storing Other Information About Carpool
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -681,6 +682,8 @@ def parse_universal_id(universal_id: str) -> Dict:
     """Parse universal_id in the format:
     "DB_TABLE_NAME[KEY_COLUMN_NAME:VALUE_OF_KEY]@DATA_COLUMN_NAME->KEY_FOR_VALUE_IN_JSON_DICT"
     
+    Also handles simple variable IDs like "<plate>"
+    
     Args:
         universal_id: The universal_id string to parse
         
@@ -689,6 +692,14 @@ def parse_universal_id(universal_id: str) -> Dict:
     """
     if not isinstance(universal_id, str): return None
     try:
+        # Handle the case where the universal_id is just a variable reference
+        if universal_id.startswith('<') and universal_id.endswith('>'):
+            variable_name = universal_id[1:-1]
+            return {
+                'is_variable': True,
+                'variable_name': variable_name
+            }
+        
         # Parse the table and row identifier section
         table_match = re.match(r'([^[]+)\[([^:]+):([^\]]+)\]@([^->]+)(->(.+))?', universal_id)
         
@@ -702,6 +713,7 @@ def parse_universal_id(universal_id: str) -> Dict:
         json_key = table_match.group(6)  # This will be None if -> is not present
         
         return {
+            'is_variable': False,
             'table_name': table_name,
             'key_column': key_column,
             'key_value': key_value,
@@ -712,8 +724,86 @@ def parse_universal_id(universal_id: str) -> Dict:
         print(f"Error parsing universal_id '{universal_id}': {e}")
         return None
 
+def get_options_from_universal_id(universal_id: str, context: Dict) -> List[str]:
+    """
+    Retrieves a list of options from the database based on a universal_id format.
+    For example, if the universal_id is 'car_info[driver_id:<user_id>]@license_plate',
+    it will return a list of all license plates for the given driver_id.
+    
+    Args:
+        universal_id: The universal_id to parse and use for querying
+        context: Dictionary containing values for variables
+        
+    Returns:
+        List of options retrieved from the database
+    """
+    parsed = parse_universal_id(universal_id)
+    if not parsed: 
+        print(f"Failed to parse universal_id for options: {universal_id}")
+        return []
+        
+    # Handle variable-only universal ID (e.g., <plate>)
+    if parsed.get('is_variable', False):
+        variable_name = parsed['variable_name']
+        # First check if the variable exists in g
+        if hasattr(g, variable_name) and getattr(g, variable_name) is not None:
+            return [str(getattr(g, variable_name))]
+        # Then check if it exists in context
+        if variable_name in context:
+            return [str(context[variable_name])]
+        # Variable not found
+        return []
+
+    # Replace context variables in key_value
+    key_value = _substitute_context(parsed['key_value'], context)
+    if key_value == parsed['key_value'] and parsed['key_value'].startswith('<'):
+        print(f"Warning: Context variable {parsed['key_value']} not found for options UID {universal_id}")
+        return []
+
+    conn = get_db()
+    try:
+        # Query to get all matching rows and extract the specified column values
+        query = f"SELECT \"{parsed['data_column']}\" FROM \"{parsed['table_name']}\" WHERE \"{parsed['key_column']}\" = ?"
+        cursor = execute_with_retry(conn, query, (key_value,))
+        
+        options = []
+        for row in cursor.fetchall():
+            column_value = row[parsed['data_column']]
+            
+            # If there's a JSON key path, extract the value from the JSON
+            if parsed['json_key'] and column_value is not None:
+                try:
+                    json_data = {}
+                    if isinstance(column_value, (dict, list)): 
+                        json_data = column_value
+                    elif isinstance(column_value, str) and column_value.strip(): 
+                        json_data = json.loads(column_value)
+
+                    keys = parsed['json_key'].split('.')
+                    data = json_data
+                    for key in keys:
+                        if isinstance(data, dict): 
+                            data = data.get(key)
+                        else: 
+                            data = None
+                            break
+                    
+                    if data is not None:
+                        options.append(str(data))
+                except (json.JSONDecodeError, TypeError) as json_e:
+                    print(f"Error decoding JSON for options UID {universal_id} (key: {parsed['json_key']}): {json_e}")
+            else:
+                # Add the column value directly if it's not None
+                if column_value is not None:
+                    options.append(str(column_value))
+        
+        return options
+    except sqlite3.Error as e:
+        print(f"Database error retrieving options for UID {universal_id}: {e}")
+        return []
+
 # Function for substituting values of variables fed in context into the universal id
-def _substitute_context(text: str, context: Optional[Dict]) -> str:
+def _substitute_context(text: str, context: Optional[Dict], empty_string_if_not_found: bool = False) -> str:
     """Substitute <variable> placeholders in text using context and Flask g.
     
     This can be used for substituting variables in any text string including 
@@ -722,6 +812,7 @@ def _substitute_context(text: str, context: Optional[Dict]) -> str:
     Args:
         text: The text containing <variable> placeholders
         context: Dictionary containing values for variables
+        empty_string_if_not_found: If True, return an empty string when a variable is not found
         
     Returns:
         String with placeholders replaced by values
@@ -742,7 +833,7 @@ def _substitute_context(text: str, context: Optional[Dict]) -> str:
             if question_id in answers:
                 return str(answers[question_id])
             print(f"Warning: Answer for question {question_id} not found in context")
-            return text  # Return original if answer not found
+            return "" if empty_string_if_not_found else text
             
         # Original functionality for other variables
         # Prioritize g, then context dict, fallback to original string
@@ -750,10 +841,9 @@ def _substitute_context(text: str, context: Optional[Dict]) -> str:
         if val_from_g is not None:
              return str(val_from_g)
         val_from_context = context.get(var_name)
-        # print(f"Key value: {var_name}, Found in context: {val_from_context}")
         if val_from_context is not None:
             return str(val_from_context)
-        return text # Variable not found, return placeholder
+        return "" if empty_string_if_not_found else text
     
     # For embedded variable references within a longer string
     # Process <answer:qX> references embedded in the text
@@ -769,7 +859,7 @@ def _substitute_context(text: str, context: Optional[Dict]) -> str:
             if question_id in answers:
                 return str(answers[question_id])
             print(f"Warning: Answer for question {question_id} not found in context")
-            return var_ref
+            return "" if empty_string_if_not_found else var_ref
         
         # Handle other variables
         val_from_g = g.get(var_name)
@@ -778,7 +868,7 @@ def _substitute_context(text: str, context: Optional[Dict]) -> str:
         val_from_context = context.get(var_name)
         if val_from_context is not None:
             return str(val_from_context)
-        return var_ref  # Keep original if not found
+        return "" if empty_string_if_not_found else var_ref
     
     # Apply substitution to any <var> pattern in the text
     pattern = r'<[^>]+>'
@@ -789,6 +879,18 @@ def get_data_for_universal_id(universal_id: str, context: Dict) -> Any:
     """Retrieve data for a given universal_id using context."""
     parsed = parse_universal_id(universal_id)
     if not parsed: return ""
+    
+    # Handle variable-only universal ID (e.g., <plate>)
+    if parsed.get('is_variable', False):
+        variable_name = parsed['variable_name']
+        # First check if the variable exists in g
+        if hasattr(g, variable_name) and getattr(g, variable_name) is not None:
+            return getattr(g, variable_name)
+        # Then check if it exists in context
+        if variable_name in context:
+            return context[variable_name]
+        # Variable not found
+        return ""
 
     key_value = _substitute_context(parsed['key_value'], context)
     if key_value == parsed['key_value'] and parsed['key_value'].startswith('<'):
@@ -829,6 +931,14 @@ def save_data_for_universal_id(universal_id: str, value: Any, context: Dict) -> 
     """Save data for a given universal_id using context."""
     parsed = parse_universal_id(universal_id)
     if not parsed: return False
+    
+    # Handle variable-only universal ID (e.g., <plate>)
+    if parsed.get('is_variable', False):
+        variable_name = parsed['variable_name']
+        # Update context with the new value
+        context[variable_name] = value
+        print(f"Updated context with {variable_name}={value}")
+        return True
 
     key_value = _substitute_context(parsed['key_value'], context)
     if key_value == parsed['key_value'] and parsed['key_value'].startswith('<'):
@@ -998,7 +1108,7 @@ def _evaluate_precondition(precondition: Dict, context: Dict) -> Tuple[bool, Opt
             value1 = ""
     else:
         # Regular context substitution
-        value1 = _substitute_context(str(value1), context)
+        value1 = _substitute_context(str(value1), context, True)
         
     # Handle universal_id format for value2
     if isinstance(value2, str) and re.match(r'[^[]+\[[^:]+:[^\]]+\]@[^->]+(->(.+))?', value2):
@@ -1010,7 +1120,7 @@ def _evaluate_precondition(precondition: Dict, context: Dict) -> Tuple[bool, Opt
             value2 = ""
     else:
         # Regular context substitution
-        value2 = _substitute_context(str(value2), context)  
+        value2 = _substitute_context(str(value2), context, True)  
 
     # Handle special NULL value
     if isinstance(value1, str) and value1.upper() == "NULL":
@@ -1046,9 +1156,7 @@ def _evaluate_precondition(precondition: Dict, context: Dict) -> Tuple[bool, Opt
     except (ValueError, TypeError) as e:
         print(f"Error evaluating condition: {e} (values: {value1}, {value2})")
         return False, f"Error evaluating condition: values not comparable"
-    
-    print(passed)
-    
+
     # Return result and any failure message
     failure_message = precondition.get('failure_message') if not passed else None
     return passed, failure_message
@@ -1063,6 +1171,11 @@ def save_quiz_results(user_id: int, results: Dict, context: Dict) -> Dict:
     operations_results = {'success': True, 'operations': [], 'message': ''}
     failed_ids = []
     skipped_ids = []
+    
+    # Create a list to track operations with unresolved variables to attempt again later
+    deferred_ops = []
+    # Track operations that were already processed to avoid infinite loops
+    processed_universal_ids = set()
 
     # Check preconditions if present in quiz data
     quiz_id = context.get('quiz_id')
@@ -1100,6 +1213,27 @@ def save_quiz_results(user_id: int, results: Dict, context: Dict) -> Dict:
             })
             continue
             
+        # Add to processed set to avoid repeated processing
+        processed_universal_ids.add(universal_id)
+            
+        # Check if this universal_id has a variable that needs to be resolved
+        has_unresolved_var = False
+        # Parse universal_id to check for unresolved variables in key_value
+        if re.match(r'[^[]+\[[^:]+:[^\]]+\]@[^->]+(->(.+))?', universal_id):
+            parsed = parse_universal_id(universal_id)
+            if parsed:
+                # Check if key_value contains an unresolved variable
+                key_value = _substitute_context(parsed['key_value'], context)
+                if key_value == parsed['key_value'] and parsed['key_value'].startswith('<'):
+                    # Variable couldn't be resolved, defer this operation
+                    print(f"Deferring operation on {universal_id} - variable {parsed['key_value']} not resolved yet")
+                    deferred_ops.append((universal_id, value))
+                    has_unresolved_var = True
+        
+        if has_unresolved_var:
+            continue
+        
+        # If we got here, there are no unresolved variables, proceed with the save
         success = save_data_for_universal_id(universal_id, value, context)
         operations_results['operations'].append({
             'universal_id': universal_id, 'success': success,
@@ -1135,6 +1269,21 @@ def save_quiz_results(user_id: int, results: Dict, context: Dict) -> Dict:
                                 'message': 'Skipped completion operation (empty universal_id)'
                             })
                             continue
+                            
+                        # Check if universal_id has unresolved variables
+                        has_unresolved_var = False
+                        if re.match(r'[^[]+\[[^:]+:[^\]]+\]@[^->]+(->(.+))?', universal_id):
+                            parsed = parse_universal_id(universal_id)
+                            if parsed:
+                                key_value = _substitute_context(parsed['key_value'], context)
+                                if key_value == parsed['key_value'] and parsed['key_value'].startswith('<'):
+                                    # Variable couldn't be resolved, defer this operation
+                                    print(f"Deferring completion operation on {universal_id} - variable {parsed['key_value']} not resolved yet")
+                                    deferred_ops.append((universal_id, value))
+                                    has_unresolved_var = True
+                                    
+                        if has_unresolved_var:
+                            continue
                         
                         # Save the value using the universal_id
                         success = save_data_for_universal_id(universal_id, value, context)
@@ -1152,12 +1301,69 @@ def save_quiz_results(user_id: int, results: Dict, context: Dict) -> Dict:
             print(f"Error processing completion operations: {e}")
             operations_results['success'] = False
             operations_results['message'] = f'Error in completion operations: {str(e)}'
+    
+    # Now try to process any deferred operations
+    if deferred_ops:
+        print(f"Processing {len(deferred_ops)} deferred operations")
+        # Track which operations still couldn't be processed in this round
+        still_deferred = []
+        
+        # Keep track of operations with variables that can never be resolved in this session
+        unresolvable_ops = []
+        
+        # Process deferred operations
+        for universal_id, value in deferred_ops:
+            # Skip if this universal_id was already processed (avoid infinite loops)
+            if universal_id in processed_universal_ids:
+                continue
+                
+            # Add to processed set to prevent future reprocessing of the same ID
+            processed_universal_ids.add(universal_id)
+            
+            # Check if variable is now resolved
+            has_unresolved_var = False
+            if re.match(r'[^[]+\[[^:]+:[^\]]+\]@[^->]+(->(.+))?', universal_id):
+                parsed = parse_universal_id(universal_id)
+                if parsed:
+                    key_value = _substitute_context(parsed['key_value'], context)
+                    if key_value == parsed['key_value'] and parsed['key_value'].startswith('<'):
+                        # Variable still couldn't be resolved
+                        print(f"Variable {parsed['key_value']} in {universal_id} still not resolved")
+                        still_deferred.append((universal_id, value))
+                        has_unresolved_var = True
+            
+            if has_unresolved_var:
+                continue
+                
+            # If we got here, variable is now resolved, try saving
+            print(f"Now processing previously deferred operation on {universal_id}")
+            success = save_data_for_universal_id(universal_id, value, context)
+            operations_results['operations'].append({
+                'universal_id': universal_id, 
+                'success': success,
+                'message': f'Deferred operation saved' if success else f'Deferred operation failed'
+            })
+            
+            if not success:
+                operations_results['success'] = False
+                failed_ids.append(universal_id)
+        
+        # Check if we still have deferred operations
+        if still_deferred:
+            # Add to skipped IDs as we can't resolve these variables
+            for universal_id, _ in still_deferred:
+                skipped_ids.append(universal_id)
+                operations_results['operations'].append({
+                    'universal_id': universal_id, 
+                    'success': False,
+                    'message': 'Skipped (unresolved variable in universal_id)'
+                })
 
     if not operations_results['success']:
         operations_results['message'] = f'Failed to save results for: {", ".join(failed_ids)}'
     else:
         if skipped_ids:
-            operations_results['message'] = f'All results saved successfully. Skipped {len(skipped_ids)} empty universal IDs.'
+            operations_results['message'] = f'All results saved successfully. Skipped {len(skipped_ids)} operations with unresolved variables or empty IDs.'
         else:
             operations_results['message'] = 'All results saved successfully.'
     # Rely on close_db to commit/rollback
@@ -1165,9 +1371,10 @@ def save_quiz_results(user_id: int, results: Dict, context: Dict) -> Dict:
     close_db()
     return operations_results
 
-def get_specific_user_data(user_id: int, universal_ids: List[str]) -> Dict:
+def get_specific_user_data(user_id: int, universal_ids: List[str], context: Dict = None) -> Dict:
     """Retrieve specific data fields using universal IDs."""
-    context = {'user_id': user_id}
+    context = context or {}
+    context['user_id'] = user_id
     if 'user' in g: context['user'] = g.user # Example
 
     result_data = {}
@@ -1240,4 +1447,159 @@ def check_user_missing_info(user_id: int) -> Dict:
         print(f"Error checking user missing info for user ID {user_id}: {e}")
     
     return result
+
+def get_user_full_profile(user_id: int) -> Dict:
+    """Get complete user profile information including user details, driver info, and cars.
+    
+    Args:
+        user_id: The user ID to get profile for
+        
+    Returns:
+        Dictionary with user profile data from multiple tables
+    """
+    conn = get_db()
+    result = {
+        'user_info': None,
+        'driver_info': None,
+        'cars': []
+    }
+    
+    try:
+        # Get basic user info
+        cursor = execute_with_retry(
+            conn,
+            'SELECT id, username, email, created_at FROM users WHERE id = ?',
+            (user_id,)
+        )
+        user = cursor.fetchone()
+        if not user:
+            return result
+            
+        result['user_info'] = dict(user)
+        
+        # Get detailed user info (name, birthdate, etc)
+        cursor = execute_with_retry(
+            conn,
+            '''
+            SELECT given_name, surname, birth_date, sex, home_address, misc_user_data
+            FROM user_info 
+            WHERE user_id = ?
+            ''',
+            (user_id,)
+        )
+        user_info_row = cursor.fetchone()
+        if user_info_row:
+            # Add to user_info
+            user_info_dict = dict(user_info_row)
+            result['user_info'].update(user_info_dict)
+            
+            # Process misc_user_data if it exists
+            if user_info_dict.get('misc_user_data'):
+                try:
+                    misc_data = json.loads(user_info_dict['misc_user_data'])
+                    # Merge the misc_data into the user_info dict
+                    result['user_info'].update(misc_data)
+                    # Remove the raw JSON string
+                    result['user_info'].pop('misc_user_data', None)
+                except (json.JSONDecodeError, TypeError):
+                    pass
+            
+        # Get driver info
+        cursor = execute_with_retry(
+            conn,
+            '''
+            SELECT dln, license_expiration, licensed_state, misc_data
+            FROM driver_info 
+            WHERE driver_id = ?
+            ''',
+            (user_id,)
+        )
+        driver_info_row = cursor.fetchone()
+        if driver_info_row:
+            # Convert to dict
+            driver_info_dict = dict(driver_info_row)
+            result['driver_info'] = driver_info_dict
+            
+            # Process misc_data if it exists
+            if driver_info_dict.get('misc_data'):
+                try:
+                    misc_data = json.loads(driver_info_dict['misc_data'])
+                    # Merge the misc_data into the driver_info dict
+                    result['driver_info'].update(misc_data)
+                    # Remove the raw JSON string
+                    result['driver_info'].pop('misc_data', None)
+                except (json.JSONDecodeError, TypeError):
+                    pass
+        
+        # Get all cars for this user
+        cursor = execute_with_retry(
+            conn,
+            '''
+            SELECT 
+                license_plate, registered_state, make, model, 
+                year, max_capacity, misc_data
+            FROM car_info 
+            WHERE driver_id = ?
+            ''',
+            (user_id,)
+        )
+        
+        cars = cursor.fetchall()
+        if cars:
+            for car in cars:
+                car_dict = dict(car)
+                
+                # Process misc_data if it exists
+                if car_dict.get('misc_data'):
+                    try:
+                        misc_data = json.loads(car_dict['misc_data'])
+                        # Merge the misc_data into the car dict
+                        car_dict.update(misc_data)
+                        # Remove the raw JSON string
+                        car_dict.pop('misc_data', None)
+                    except (json.JSONDecodeError, TypeError):
+                        pass
+                
+                result['cars'].append(car_dict)
+                
+        return result
+    except sqlite3.Error as e:
+        print(f"Error getting full profile for user ID {user_id}: {e}")
+        return result
+
+def delete_car(driver_id: int, license_plate: str) -> bool:
+    """Delete a car from the car_info table.
+    
+    Args:
+        driver_id: The ID of the user/driver who owns the car
+        license_plate: The license plate of the car to delete
+        
+    Returns:
+        True if deletion was successful, False otherwise
+    """
+    conn = get_db()
+    try:
+        # First verify that this car belongs to this driver
+        cursor = execute_with_retry(
+            conn,
+            'SELECT license_plate FROM car_info WHERE driver_id = ? AND license_plate = ?',
+            (driver_id, license_plate)
+        )
+        
+        car = cursor.fetchone()
+        if not car:
+            # Car not found or doesn't belong to this driver
+            return False
+            
+        # Delete the car
+        execute_with_retry(
+            conn,
+            'DELETE FROM car_info WHERE license_plate = ?',
+            (license_plate,)
+        )
+        
+        return True
+    except sqlite3.Error as e:
+        print(f"Error deleting car {license_plate} for driver {driver_id}: {e}")
+        return False
 

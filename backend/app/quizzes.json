@@ -210,6 +210,22 @@
         "value": "<user_id>",
         "universal_id": "car_info[license_plate:<plate>]@driver_id"
       }
+    ],
+    "conditional_questions": [
+      {
+        "id": "q6",
+        "type": "short_text",
+        "required": true,
+        "question": "What is the license plate of this car?",
+        "conditions": [      
+          {
+            "value1": "<plate>",
+            "condition": "==",
+            "value2": ""
+          }
+        ],
+        "universal_id": "<plate>"
+      }
     ]
   }
   ,
@@ -253,6 +269,14 @@
         "required": true,
         "question": "How many passengers can you include?",
         "universal_id": "carpool_list[carpool_id:<new_listing_id>]@carpool_capacity"
+      },
+      {
+        "id": "q6",
+        "type": "dropdown",
+        "required": true,
+        "question": "Which vehicle will you be using (license plate)?",
+        "options": "car_info[driver_id:<user_id>]@license_plate",
+        "universal_id": "carpool_list[carpool_id:<new_listing_id>]@vehicle_license_plate"
       }
     ],
     "completion_operation": [

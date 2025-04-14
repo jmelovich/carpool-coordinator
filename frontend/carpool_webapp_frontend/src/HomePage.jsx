@@ -81,12 +81,20 @@ function HomePage({ onLogout }) {
             <h1 className="text-3xl font-bold text-[#2A9D8F]">
               Welcome, {username || 'Loading...'}!
             </h1>
-            <button
-              onClick={handleLogout}
-              className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600"
-            >
-              Logout
-            </button>
+            <div className="flex space-x-2">
+              <button
+                onClick={() => navigate('/profile')}
+                className="px-4 py-2 bg-[#2A9D8F] text-white rounded-lg hover:bg-[#238577]"
+              >
+                View Profile
+              </button>
+              <button
+                onClick={handleLogout}
+                className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600"
+              >
+                Logout
+              </button>
+            </div>
           </div>
 
           {error && (

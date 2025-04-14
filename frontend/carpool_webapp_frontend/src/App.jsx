@@ -9,6 +9,7 @@ import MainCarpoolPage from './MainCarpoolPage';
 import CarpoolListingPage from './CarpoolListingPage';
 import LandingPage from './LandingPage';
 import DynamicQuizPage from './DynamicQuizPage';
+import UserPage from './UserPage';
 import Cookies from 'js-cookie';
 
 function App() {
@@ -122,6 +123,16 @@ function App() {
             }
           />
           <Route path="/landing" element={<LandingPage />} />
+          <Route
+            path="/profile"
+            element={
+              isAuthenticated ? (
+                <UserPage />
+              ) : (
+                <Navigate to="/" replace />
+              )
+            }
+          />
         </Routes>
       </div>
     </Router>

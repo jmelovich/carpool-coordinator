@@ -5,7 +5,7 @@ from app.database import (
     get_user_by_username, get_user_by_email,
     get_quiz_by_id, save_quiz_results, get_specific_user_data, init_app, _substitute_context,
     reserve_carpool_listing_id, get_full_carpool_details, get_public_carpool_details,
-    check_user_missing_info
+    check_user_missing_info, get_options_from_universal_id, get_user_full_profile, delete_car
 )
 from flask_jwt_extended import (
     JWTManager, jwt_required, create_access_token, get_jwt_identity
@@ -13,6 +13,7 @@ from flask_jwt_extended import (
 from app.helper import is_valid_email, is_valid_password
 import json
 from datetime import datetime, timedelta
+import re
 
 init_app(app)
 
@@ -148,6 +149,40 @@ def get_missing_user_info():
     
     return jsonify(missing_info_status)
 
+@app.route('/api/users/me/profile', methods=['GET'])
+@jwt_required()
+def get_user_profile():
+    """Get the complete profile of the current user including user info, driver info, and cars"""
+    current_user_id = int(get_jwt_identity())
+    
+    # Get the user's full profile
+    profile = get_user_full_profile(current_user_id)
+    
+    if not profile['user_info']:
+        return jsonify({'error': 'User not found'}), 404
+    
+    return jsonify({
+        'success': True,
+        'profile': profile
+    })
+
+@app.route('/api/cars/<string:license_plate>', methods=['DELETE'])
+@jwt_required()
+def delete_user_car(license_plate):
+    """Delete a car owned by the current user"""
+    current_user_id = int(get_jwt_identity())
+    
+    # Delete the car
+    success = delete_car(current_user_id, license_plate)
+    
+    if not success:
+        return jsonify({'error': 'Car not found or you are not authorized to delete it'}), 404
+    
+    return jsonify({
+        'success': True,
+        'message': f'Car with license plate {license_plate} deleted successfully'
+    })
+
 @app.route('/api/quiz/get', methods=['GET'])
 @jwt_required()
 def get_quiz():
@@ -169,11 +204,66 @@ def get_quiz():
     
     # Parse quiz JSON to extract universal_ids for questions
     try:
+        # Create context for variable substitution
+        context = {
+            'user_id': current_user_id,
+            'quiz_id': quiz_id
+        }
+        
+        # Add additional URL parameters to context if present
+        for key, value in request.args.items():
+            if key != 'quiz_id':  # Skip quiz_id to avoid duplication
+                context[key] = value
+        
+        # Load quiz JSON
         quiz_json = json.loads(quiz_data['json'])
+        
+        
+        # Process conditional questions and add them to the questions list if conditions are met
+        if 'conditional_questions' in quiz_json and isinstance(quiz_json['conditional_questions'], list):
+            for conditional_question in quiz_json['conditional_questions']:
+                # Skip if no conditions defined
+                if 'conditions' not in conditional_question or not isinstance(conditional_question['conditions'], list):
+                    continue
+                
+                # Evaluate all conditions for this question
+                all_conditions_met = True
+                for condition in conditional_question['conditions']:
+                    # Process the condition with the current context
+                    from app.database import _evaluate_precondition
+                    passed, _ = _evaluate_precondition(condition, context)
+                    if not passed:
+                        all_conditions_met = False
+                        break
+                
+                # If all conditions are met, add this question to the main questions list
+                if all_conditions_met:
+                    if 'questions' not in quiz_json:
+                        quiz_json['questions'] = []
+                    quiz_json['questions'].append(conditional_question)
+                    print(f"Added conditional question {conditional_question.get('id')} to quiz")
+        
+        # Process dynamic options in questions
+        if 'questions' in quiz_json:
+            for question in quiz_json['questions']:
+                # Check if options field exists and is a string
+                if 'options' in question and isinstance(question['options'], str):
+                    # Check if the string matches a universal ID pattern
+                    if re.match(r'[^[]+\[[^:]+:[^\]]+\]@[^->]+(->(.+))?', question['options']):
+                        # Get options from the database using the universal ID
+                        options_uid = question['options']
+                        dynamic_options = get_options_from_universal_id(options_uid, context)
+                        question['options'] = dynamic_options
+                        print(f"Replaced dynamic options for question {question.get('id')}: {dynamic_options}")
+        
+        # Update the json field with the processed quiz JSON
+        quiz_data['json'] = json.dumps(quiz_json)
+        
+        # Extract universal_ids for getting existing answers
         universal_ids = [question.get('universal_id') for question in quiz_json.get('questions', [])]
         
         # Get existing answers for these universal_ids
-        existing_answers = get_specific_user_data(current_user_id, universal_ids)
+        existing_answers = get_specific_user_data(current_user_id, universal_ids, context)
         
         # Return quiz data along with existing answers
         return jsonify({
@@ -184,6 +274,9 @@ def get_quiz():
         })
     except json.JSONDecodeError:
         return jsonify({'error': 'Failed to parse quiz data'}), 500
+    except Exception as e:
+        print(f"Error processing quiz data: {e}")
+        return jsonify({'error': f'An error occurred: {str(e)}'}), 500
 
 @app.route('/api/quiz/save', methods=['POST'])
 @jwt_required()
@@ -233,13 +326,45 @@ def save_quiz():
         context['answers'] = data['raw_answers']
         print(f"Using raw answers by question ID: {data['raw_answers']}")
     
+    # Try to identify and process simple variable-only universal IDs first
+    # This helps ensure variables like <plate> are saved in context before processing other answers
+    reordered_answers = {}
+    variable_only_answers = {}
+    
+    for universal_id, value in data['answers'].items():
+        if universal_id.startswith('<') and universal_id.endswith('>'):
+            # This is a variable-only universal ID, save it first
+            variable_only_answers[universal_id] = value
+            # Also update context directly so future substitutions can use this value
+            var_name = universal_id[1:-1]
+            context[var_name] = value
+            print(f"Pre-populating context with {var_name}={value}")
+        else:
+            # Regular universal ID, save it later
+            reordered_answers[universal_id] = value
+    
     # Print the context to log for debugging
     print(f"Context for variable substitution: {context}")
     
-    # Save quiz results to appropriate locations based on universal_ids
+    # Save the variable-only universal IDs first
+    if variable_only_answers:
+        result = save_quiz_results(
+            user_id=current_user_id,
+            results=variable_only_answers,
+            context=context
+        )
+        if not result['success']:
+            # If saving the variables failed, return the error
+            return jsonify({
+                'success': False,
+                'message': result['message'],
+                'operations': result['operations']
+            }), 500
+    
+    # Now save the remaining answers
     result = save_quiz_results(
         user_id=current_user_id,
-        results=data['answers'],
+        results=reordered_answers,
         context=context
     )
     
