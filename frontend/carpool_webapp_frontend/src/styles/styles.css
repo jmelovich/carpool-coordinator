@@ -1,278 +1,345 @@
-/* === GLOBAL RESETS === */
-
+/* ==========================================================================
+   Variables and theme settings
+   ========================================================================== */
 :root {
-    font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
-    line-height: 1.5;
-    font-weight: 400;
+  /* Typography */
+  --font-family-base: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+  --line-height-base: 1.5;
+  --font-weight-base: 400;
+  --font-weight-bold: 500;
   
-    color-scheme: light dark;
-    color: rgba(255, 255, 255, 0.87);
-    background-color: #7E9370;
+  /* Colors */
+  --color-primary: #228B22;
+  --color-primary-hover: #1c6e1c;
+  --color-secondary: #87CEEB;
+  --color-secondary-hover: #6bb5d8;
+  --color-danger: #EF4444;
+  --color-danger-hover: #DC2626;
+  --color-text-light: rgba(255, 255, 255, 0.87);
+  --color-text-dark: #213547;
+  --color-link: #646cff;
+  --color-link-hover: #535bf2;
+  --color-background-light: #ffffff;
+  --color-background-dark: #7E9370;
+  --color-notification: rgb(61, 185, 61);
+  --color-success-bg: #d1fae5;
+  --color-success-text: #065f46;
+  --color-error-bg: #fee2e2;
+  --color-error-text: #991b1b;
+  --color-scrollbar: #d1d5db;
   
-    font-synthesis: none;
-    text-rendering: optimizeLegibility;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
+  /* Spacing */
+  --spacing-xs: 0.375rem; /* 6px */
+  --spacing-sm: 0.5rem;   /* 8px */
+  --spacing-md: 0.75rem;  /* 12px */
+  --spacing-lg: 1rem;     /* 16px */
+  --spacing-xl: 1.5rem;   /* 24px */
+  --spacing-xxl: 2rem;    /* 32px */
+  
+  /* Borders */
+  --border-radius-sm: 5px;
+  --border-radius-md: 8px;
+  --border-radius-lg: 10px;
+  --border-radius-xl: 0.75rem; /* 12px */
+  --border-radius-pill: 999px;
+  
+  /* Shadows */
+  --shadow-sm: 0 4px 10px rgba(0, 0, 0, 0.1);
+  
+  /* Base theme */
+  font-family: var(--font-family-base);
+  line-height: var(--line-height-base);
+  font-weight: var(--font-weight-base);
+  
+  color-scheme: light dark;
+  color: var(--color-text-light);
+  background-color: var(--color-background-dark);
+  
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ==========================================================================
+   Base element styles
+   ========================================================================== */
+body {
+  margin: 0;
+  display: flex;
+  justify-content: center;
+  flex-direction: column;
+  min-width: 320px;
+  min-height: 100%;
+  text-align: center;
+  overflow-x: hidden;
+}
+
+a {
+  font-weight: var(--font-weight-bold);
+  color: var(--color-link);
+  text-decoration: inherit;
+}
+
+a:hover {
+  color: var(--color-link-hover);
+}
+
+h1 {
+  font-size: 3.2em;
+  line-height: 1.1;
+}
+
+/* ==========================================================================
+   Form elements
+   ========================================================================== */
+form {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.label {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  font-size: 1.1em;
+  font-weight: bold;
+  margin-bottom: var(--spacing-sm);
+  padding: var(--spacing-lg);
+}
+
+.inputBox {
+  width: 250px;
+  padding: var(--spacing-lg);
+  font-size: 1em;
+  border: 1px solid #ccc;
+  border-radius: var(--border-radius-sm);
+}
+
+/* Address input styling */
+.address-input {
+  position: relative;
+  width: 100%;
+}
+
+.address-input svg {
+  flex-shrink: 0;
+  width: 16px !important;
+  height: 16px !important;
+}
+
+.address-input .cursor-pointer,
+.address-input div[role="button"],
+.address-input div.cursor-pointer {
+  cursor: pointer !important;
+}
+
+/* ==========================================================================
+   Button styles
+   ========================================================================== */
+button {
+  border-radius: var(--border-radius-md);
+  border: 1px solid transparent;
+  padding: 0.6em 1.2em;
+  font-size: 1em;
+  font-weight: var(--font-weight-bold);
+  font-family: inherit;
+  background-color: #1a1a1a;
+  cursor: pointer;
+  transition: border-color 0.25s;
+  margin: 1em;
+}
+
+button:hover {
+  border-color: var(--color-link);
+}
+
+button:focus,
+button:focus-visible {
+  outline: 4px auto -webkit-focus-ring-color;
+}
+
+/* Button utilities */
+.btn {
+  padding: 0.6em 1.2em;
+  font-size: 1rem;
+  font-weight: var(--font-weight-bold);
+  border-radius: var(--border-radius-md);
+  transition: background-color 0.25s ease;
+  cursor: pointer;
+  border: 1px solid transparent;
+  margin: 0;
+}
+
+.btn-primary {
+  background-color: var(--color-primary);
+  color: white;
+}
+
+.btn-primary:hover {
+  background-color: var(--color-primary-hover);
+}
+
+.btn-secondary {
+  background-color: var(--color-secondary);
+  color: #333;
+}
+
+.btn-secondary:hover {
+  background-color: var(--color-secondary-hover);
+}
+
+.btn-danger {
+  background-color: var(--color-danger);
+  color: white;
+}
+
+.btn-danger:hover {
+  background-color: var(--color-danger-hover);
+}
+
+/* Override specific button styling */
+button.px-4.py-3 {
+  margin: 0;
+}
+
+/* ==========================================================================
+   Component styles
+   ========================================================================== */
+/* Login container */
+.Login-border {
+  background: white;
+  padding: var(--spacing-xl);
+  border-radius: var(--border-radius-lg);
+  box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.1);
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Direction notification */
+.directions {
+  position: absolute;
+  top: var(--spacing-lg);
+  right: var(--spacing-lg);
+  background-color: var(--color-notification);
+  color: white;
+  padding: var(--spacing-lg);
+  border-radius: var(--border-radius-md);
+  width: 250px;
+  opacity: 0.8;
+}
+
+/* Alert components */
+.alert-success {
+  background-color: var(--color-success-bg);
+  color: var(--color-success-text);
+  padding: var(--spacing-md);
+  border-radius: var(--border-radius-sm);
+  margin-bottom: var(--spacing-lg);
+}
+
+.alert-error {
+  background-color: var(--color-error-bg);
+  color: var(--color-error-text);
+  padding: var(--spacing-md);
+  border-radius: var(--border-radius-sm);
+  margin-bottom: var(--spacing-lg);
+}
+
+/* Card component */
+.card {
+  background-color: white;
+  padding: var(--spacing-xl);
+  border-radius: var(--border-radius-xl);
+  box-shadow: var(--shadow-sm);
+}
+
+/* ==========================================================================
+   Layout containers
+   ========================================================================== */
+.container {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: var(--spacing-xxl);
+}
+
+/* Modal positioning */
+.fixed.z-50 {
+  z-index: 50;
+}
+
+.max-w-md {
+  max-width: 28rem !important;
+}
+
+.fixed.inset-0.z-50.flex.items-center.justify-center {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+.fixed.inset-0.z-50.flex.items-center.justify-center > div {
+  margin: 0 auto !important;
+  width: 100% !important;
+  max-width: 28rem !important;
+  position: relative !important;
+}
+
+/* Address input modal z-index */
+.address-input .fixed.inset-0.z-50 {
+  z-index: 9999 !important;
+}
+
+/* ==========================================================================
+   Map specific styles
+   ========================================================================== */
+.gm-style {
+  position: relative;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* ==========================================================================
+   Utility classes
+   ========================================================================== */
+/* Scrollbar styling */
+.overflow-y-auto {
+  overflow-y: auto !important;
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-scrollbar) transparent;
+}
+
+.overflow-y-auto::-webkit-scrollbar {
+  width: 8px;
+}
+
+.overflow-y-auto::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.overflow-y-auto::-webkit-scrollbar-thumb {
+  background-color: var(--color-scrollbar);
+  border-radius: 20px;
+}
+
+/* ==========================================================================
+   Media queries
+   ========================================================================== */
+@media (prefers-color-scheme: light) {
+  :root {
+    color: var(--color-text-dark);
+    background-color: var(--color-background-light);
   }
   
-  body {
-    margin: 0;
-    display: flex;
-    justify-content: center;
-    flex-direction: column;
-    /* align-items: center; */
-    min-width: 320px;
-    min-height: 100%;
-    text-align: center;
-    overflow-x: hidden;
-  }  
-  
-  a {
-    font-weight: 500;
-    color: #646cff;
-    text-decoration: inherit;
-  }
   a:hover {
-    color: #535bf2;
+    color: #747bff;
   }
-  
-  h1 {
-    font-size: 3.2em;
-    line-height: 1.1;
-  }
-  
-  /* === FORM STYLES === */
-  
-  form {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 5px;
-  }
-  
-  /* === BUTTON STYLES (already included below) === */
   
   button {
-    border-radius: 8px;
-    border: 1px solid transparent;
-    padding: 0.6em 1.2em;
-    font-size: 1em;
-    font-weight: 500;
-    font-family: inherit;
-    background-color: #1a1a1a;
-    cursor: pointer;
-    transition: border-color 0.25s;
-    margin: 1em;
+    background-color: #f9f9f9;
   }
-  button:hover {
-    border-color: #646cff;
-  }
-  button:focus,
-  button:focus-visible {
-    outline: 4px auto -webkit-focus-ring-color;
-  }
-  
-  /* === LIGHT MODE OVERRIDE === */
-  
-  @media (prefers-color-scheme: light) {
-    :root {
-      color: #213547;
-      background-color: #ffffff;
-    }
-    a:hover {
-      color: #747bff;
-    }
-    button {
-      background-color: #f9f9f9;
-    }
-  }
-  
-  /* === LABELS, INPUTS, CARDS, BUTTONS === */
-  
-  .label {
-    display: flex;
-    flex-direction: row;
-    align-items: center;
-    font-size: 1.1em;
-    font-weight: bold;
-    margin-bottom: 5px;
-    padding: 10px;
-  }
-  
-  .inputBox {
-    width: 250px;
-    padding: 10px;
-    font-size: 1em;
-    border: 1px solid #ccc;
-    border-radius: 5px;
-  }
-  
-  .Login-border {
-    background: white;
-    padding: 20px;
-    border-radius: 10px;
-    box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.1);
-    text-align: center;
-    display: flex;
-    flex-direction: column;
-  }
-
-  .directions {
-    position: absolute;
-    top: 10px;
-    right: 10px;
-    background-color: rgb(61, 185, 61); /* green with transparency */
-    color: white;
-    padding: 10px;
-    border-radius: 8px;
-    width: 250px;
-    opacity: 0.8;
-  }
-  
-  /* === ALERTS === */
-  
-  .alert-success {
-    background-color: #d1fae5;
-    color: #065f46;
-    padding: 0.75rem;
-    border-radius: 0.375rem;
-    margin-bottom: 1rem;
-  }
-  
-  .alert-error {
-    background-color: #fee2e2;
-    color: #991b1b;
-    padding: 0.75rem;
-    border-radius: 0.375rem;
-    margin-bottom: 1rem;
-  }
-  
-  /* === REUSABLE STYLES === */
-  
-  .container {
-    max-width: 1280px;
-    margin: 0 auto;
-    padding: 2rem;
-  }
-  
-  .card {
-    background-color: white;
-    padding: 1.5rem;
-    border-radius: 0.75rem;
-    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
-  }
-  
-  .btn {
-    padding: 0.6em 1.2em;
-    font-size: 1rem;
-    font-weight: 500;
-    border-radius: 0.5rem;
-    transition: background-color 0.25s ease;
-    cursor: pointer;
-  }
-  
-  .btn-primary {
-    background-color: #228B22;
-    color: white;
-  }
-  .btn-primary:hover {
-    background-color: #1c6e1c;
-  }
-  
-  .btn-secondary {
-    background-color: #87CEEB;
-    color: #333;
-  }
-  .btn-secondary:hover {
-    background-color: #6bb5d8;
-  }
-  
-  .btn-danger {
-    background-color: #EF4444;
-    color: white;
-  }
-  .btn-danger:hover {
-    background-color: #DC2626;
-  }
-
-  /* === CARPOOL PAGE SPECIFIC STYLES === */
-
-  /* Fix scrollable container */
-  .overflow-y-auto {
-    overflow-y: auto !important;
-    scrollbar-width: thin;
-    scrollbar-color: #d1d5db transparent;
-  }
-
-  .overflow-y-auto::-webkit-scrollbar {
-    width: 8px;
-  }
-
-  .overflow-y-auto::-webkit-scrollbar-track {
-    background: transparent;
-  }
-
-  .overflow-y-auto::-webkit-scrollbar-thumb {
-    background-color: #d1d5db;
-    border-radius: 20px;
-  }
-
-  /* Fix address input */
-  .address-input {
-    position: relative;
-    width: 100%;
-  }
-
-  .address-input svg {
-    flex-shrink: 0;
-    width: 16px !important;
-    height: 16px !important;
-  }
-
-  /* Ensure the modal is constrained */
-  .fixed.z-50 {
-    z-index: 50;
-  }
-
-  .max-w-md {
-    max-width: 28rem !important;
-  }
-
-  /* Improve button styles */
-  button.px-4.py-3 {
-    margin: 0; /* Override default button margin */
-  }
-
-  /* Fix modal positioning */
-  .fixed.inset-0.z-50.flex.items-center.justify-center {
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-  }
-
-  .fixed.inset-0.z-50.flex.items-center.justify-center > div {
-    margin: 0 auto !important;
-    width: 100% !important;
-    max-width: 28rem !important;
-    position: relative !important;
-  }
-
-  /* Make address input have proper cursor */
-  .address-input .cursor-pointer,
-  .address-input div[role="button"],
-  .address-input div.cursor-pointer {
-    cursor: pointer !important;
-  }
-
-  /* Force proper map container display */
-  .gm-style {
-    position: relative;
-    width: 100% !important;
-    height: 100% !important;
-  }
-
-  /* Higher z-index for the address input modal */
-  .address-input .fixed.inset-0.z-50 {
-    z-index: 9999 !important;
-  }
+}
   
