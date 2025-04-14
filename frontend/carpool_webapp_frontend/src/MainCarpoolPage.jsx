@@ -63,6 +63,33 @@ function MainCarpoolPage({ onLogout }) {
         return;
       }
 
+      // First, check for missing user info
+      const missingInfoResponse = await fetch('http://127.0.0.1:5000/api/users/me/get-missing-info', {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!missingInfoResponse.ok) {
+        throw new Error('Failed to check user info');
+      }
+
+      const missingInfoData = await missingInfoResponse.json();
+      
+      // Check all required info in order - user_info, driver_info
+      if (!missingInfoData.user_info.isComplete) {
+        navigate(`/quiz?id=${missingInfoData.user_info.quiz_id}`);
+        return;
+      }
+      
+      if (!missingInfoData.driver_info.isComplete) {
+        navigate(`/quiz?id=${missingInfoData.driver_info.quiz_id}`);
+        return;
+      }
+
+      // If all info is complete, proceed with creating the carpool
       const response = await fetch('http://127.0.0.1:5000/api/carpool/reserve', {
         method: 'POST',
         headers: {

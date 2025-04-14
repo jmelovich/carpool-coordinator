@@ -368,6 +368,313 @@ def reserve_carpool_listing_id(driver_id: int) -> Optional[int]:
         print(f"Error creating carpool listing for driver ID {driver_id}: {e}")
         return None # Rely on close_db teardown to rollback
 
+def get_carpool_listing(carpool_id: int, user_id: int = None) -> Optional[Dict]:
+    """Get a carpool listing with the given ID.
+    
+    Args:
+        carpool_id: The ID of the carpool listing
+        user_id: Optional user ID to verify ownership (if provided)
+        
+    Returns:
+        Dictionary with carpool details or None if not found or not authorized
+    """
+    conn = get_db()
+    try:
+        cursor = execute_with_retry(
+            conn,
+            '''
+            SELECT 
+                carpool_id, driver_id, route_origin, route_destination, 
+                arrive_by, leave_earliest, carpool_capacity, 
+                misc_data, created_at
+            FROM carpool_list 
+            WHERE carpool_id = ?
+            ''',
+            (carpool_id,)
+        )
+        
+        carpool = cursor.fetchone()
+        if not carpool:
+            return None
+            
+        # Convert to dict for easier handling
+        carpool_dict = dict(carpool)
+        
+        # Verify ownership if user_id provided
+        if user_id is not None and carpool_dict['driver_id'] != user_id:
+            return None  # Not authorized
+            
+        # Process misc_data if it exists
+        if carpool_dict['misc_data']:
+            try:
+                misc_data = json.loads(carpool_dict['misc_data'])
+                driver_id = carpool_dict.pop('driver_id', None)
+                # Merge the misc_data into the main dict
+                carpool_dict.update(misc_data)
+            except json.JSONDecodeError:
+                # If JSON is invalid, keep the raw string
+                pass
+        else:
+            driver_id = carpool_dict.pop('driver_id', None)
+            
+        return carpool_dict
+    except sqlite3.Error as e:
+        print(f"Error getting carpool listing {carpool_id}: {e}")
+        return None
+
+def get_passenger_details(carpool_id: int) -> List[Dict]:
+    """Get all passengers for a carpool listing.
+    
+    Args:
+        carpool_id: The ID of the carpool listing
+        
+    Returns:
+        List of dictionaries with passenger details
+    """
+    conn = get_db()
+    try:
+        # First get all passengers with their basic details
+        cursor = execute_with_retry(
+            conn,
+            '''
+            SELECT 
+                cp.carpool_id, cp.passenger_id, cp.pickup_location, 
+                cp.pickup_time, cp.dropoff_location, cp.dropoff_time, 
+                cp.misc_data,
+                u.username as passenger_name
+            FROM carpool_passengers cp
+            JOIN users u ON cp.passenger_id = u.id
+            WHERE cp.carpool_id = ?
+            ''',
+            (carpool_id,)
+        )
+        
+        passengers = []
+        for row in cursor.fetchall():
+            passenger_dict = dict(row)
+            
+            # Process misc_data if it exists
+            if passenger_dict['misc_data']:
+                try:
+                    misc_data = json.loads(passenger_dict['misc_data'])
+                    # Merge the misc_data into the main dict
+                    passenger_dict.update(misc_data)
+                except json.JSONDecodeError:
+                    # If JSON is invalid, keep the raw string
+                    pass
+                    
+            passengers.append(passenger_dict)
+            
+        return passengers
+    except sqlite3.Error as e:
+        print(f"Error getting passengers for carpool {carpool_id}: {e}")
+        return []
+
+def get_car_info(driver_id: int) -> Optional[Dict]:
+    """Get car information for a driver.
+    
+    Args:
+        driver_id: The user ID of the driver
+        
+    Returns:
+        Dictionary with car details or None if not found
+    """
+    conn = get_db()
+    try:
+        cursor = execute_with_retry(
+            conn,
+            '''
+            SELECT 
+                license_plate, registered_state, make, model, 
+                year, max_capacity, misc_data
+            FROM car_info 
+            WHERE driver_id = ?
+            ''',
+            (driver_id,)
+        )
+        
+        car = cursor.fetchone()
+        if not car:
+            return None
+            
+        # Convert to dict for easier handling
+        car_dict = dict(car)
+        
+        # Process misc_data if it exists
+        if car_dict['misc_data']:
+            try:
+                misc_data = json.loads(car_dict['misc_data'])
+                # Merge the misc_data into the main dict
+                car_dict.update(misc_data)
+            except json.JSONDecodeError:
+                # If JSON is invalid, keep the raw string
+                pass
+                
+        return car_dict
+    except sqlite3.Error as e:
+        print(f"Error getting car info for driver {driver_id}: {e}")
+        return None
+
+def get_full_carpool_details(carpool_id: int, user_id: int = None) -> Optional[Dict]:
+    """Get full details for a carpool listing, including passengers and car info.
+    
+    Args:
+        carpool_id: The ID of the carpool listing
+        user_id: Optional user ID to verify ownership (if provided)
+        
+    Returns:
+        Dictionary with carpool details including passengers or None if not found/authorized
+    """
+    conn = get_db()
+    try:
+        # First get the carpool with driver_id so we can look up car info
+        cursor = execute_with_retry(
+            conn,
+            'SELECT driver_id FROM carpool_list WHERE carpool_id = ?',
+            (carpool_id,)
+        )
+        
+        carpool_row = cursor.fetchone()
+        if not carpool_row:
+            return None
+            
+        driver_id = carpool_row['driver_id']
+        
+        # Verify ownership if user_id provided
+        if user_id is not None and driver_id != user_id:
+            return None  # Not authorized
+    
+        # Get the basic carpool listing without driver_id
+        carpool = get_carpool_listing(carpool_id)
+        if not carpool:
+            return None
+            
+        # Get passenger details
+        passengers = get_passenger_details(carpool_id)
+        
+        # Add passengers to the carpool details
+        carpool['passengers'] = passengers
+        
+        # Get car info for the driver
+        car_info = get_car_info(driver_id)
+        
+        # Add car info to the carpool details
+        carpool['car_info'] = car_info or {}
+        
+        return carpool
+    except sqlite3.Error as e:
+        print(f"Error getting full carpool details for {carpool_id}: {e}")
+        return None
+
+def get_public_passenger_details(carpool_id: int) -> List[Dict]:
+    """Get limited passenger details for a carpool listing, excluding sensitive information.
+    
+    Args:
+        carpool_id: The ID of the carpool listing
+        
+    Returns:
+        List of dictionaries with limited passenger details (only ID and name)
+    """
+    conn = get_db()
+    try:
+        # Only get passenger IDs and names
+        cursor = execute_with_retry(
+            conn,
+            '''
+            SELECT 
+                cp.passenger_id,
+                u.username as passenger_name
+            FROM carpool_passengers cp
+            JOIN users u ON cp.passenger_id = u.id
+            WHERE cp.carpool_id = ?
+            ''',
+            (carpool_id,)
+        )
+        
+        passengers = []
+        for row in cursor.fetchall():
+            passenger_dict = dict(row)
+            passengers.append(passenger_dict)
+            
+        return passengers
+    except sqlite3.Error as e:
+        print(f"Error getting public passenger info for carpool {carpool_id}: {e}")
+        return []
+
+def get_public_carpool_details(carpool_id: int) -> Optional[Dict]:
+    """Get public details for a carpool listing, including limited passenger info.
+    
+    Args:
+        carpool_id: The ID of the carpool listing
+        
+    Returns:
+        Dictionary with public carpool details or None if not found
+    """
+    conn = get_db()
+    try:
+        # First get the carpool with driver_id so we can look up car info
+        cursor = execute_with_retry(
+            conn,
+            '''
+            SELECT 
+                carpool_id, driver_id, route_origin, route_destination, 
+                arrive_by, leave_earliest, carpool_capacity, 
+                created_at
+            FROM carpool_list 
+            WHERE carpool_id = ?
+            ''',
+            (carpool_id,)
+        )
+        
+        carpool_row = cursor.fetchone()
+        if not carpool_row:
+            return None
+            
+        # Convert to dict for easier handling
+        carpool = dict(carpool_row)
+        driver_id = carpool.pop('driver_id', None)
+        
+        # Get driver's username
+        driver_cursor = execute_with_retry(
+            conn,
+            'SELECT username FROM users WHERE id = ?',
+            (driver_id,)
+        )
+        driver_row = driver_cursor.fetchone()
+        if driver_row:
+            carpool['driver_name'] = driver_row['username']
+            
+        # Get limited passenger details
+        passengers = get_public_passenger_details(carpool_id)
+        
+        # Add passengers to the carpool details
+        carpool['passengers'] = passengers
+        
+        # Get car info for the driver (excluding sensitive details)
+        cursor = execute_with_retry(
+            conn,
+            '''
+            SELECT 
+                make, model, year, max_capacity
+            FROM car_info 
+            WHERE driver_id = ?
+            ''',
+            (driver_id,)
+        )
+        
+        car = cursor.fetchone()
+        if car:
+            car_dict = dict(car)
+            # Add car info to the carpool details
+            carpool['car_info'] = car_dict
+        else:
+            carpool['car_info'] = {}
+        
+        return carpool
+    except sqlite3.Error as e:
+        print(f"Error getting public carpool details for {carpool_id}: {e}")
+        return None
+
 # --- QUIZ FUNCTIONS (Universal ID Handling) ---
 
 def parse_universal_id(universal_id: str) -> Dict:
@@ -868,4 +1175,69 @@ def get_specific_user_data(user_id: int, universal_ids: List[str]) -> Dict:
         if not uid: result_data[uid] = ""
         else: result_data[uid] = get_data_for_universal_id(uid, context)
     return result_data
+
+def check_user_missing_info(user_id: int) -> Dict:
+    """
+    Check if user has complete information across user_info, driver_info, and car_info tables.
+    
+    Args:
+        user_id: The user ID to check
+        
+    Returns:
+        Dict with status of each info category and associated quiz_id
+    """
+    conn = get_db()
+    result = {
+        'user_info': {'isComplete': False, 'quiz_id': 'user_info_quiz'},
+        'driver_info': {'isComplete': False, 'quiz_id': 'driver_info_quiz'},
+        'car_info': {'isComplete': False, 'quiz_id': 'car_info_quiz'}
+    }
+    
+    try:
+        # Check user_info table
+        cursor = execute_with_retry(
+            conn,
+            '''
+            SELECT given_name, surname, birth_date 
+            FROM user_info 
+            WHERE user_id = ?
+            ''',
+            (user_id,)
+        )
+        user_info_row = cursor.fetchone()
+        if user_info_row and all(user_info_row[field] is not None for field in ['given_name', 'surname', 'birth_date']):
+            result['user_info']['isComplete'] = True
+            
+        # Check driver_info table
+        cursor = execute_with_retry(
+            conn,
+            '''
+            SELECT dln, license_expiration, licensed_state 
+            FROM driver_info 
+            WHERE driver_id = ?
+            ''',
+            (user_id,)
+        )
+        driver_info_row = cursor.fetchone()
+        if driver_info_row and all(driver_info_row[field] is not None for field in ['dln', 'license_expiration', 'licensed_state']):
+            result['driver_info']['isComplete'] = True
+            
+        # Check car_info table
+        cursor = execute_with_retry(
+            conn,
+            '''
+            SELECT license_plate, max_capacity
+            FROM car_info 
+            WHERE driver_id = ?
+            ''',
+            (user_id,)
+        )
+        car_info_row = cursor.fetchone()
+        if car_info_row and all(car_info_row[field] is not None for field in ['license_plate', 'max_capacity']):
+            result['car_info']['isComplete'] = True
+    
+    except sqlite3.Error as e:
+        print(f"Error checking user missing info for user ID {user_id}: {e}")
+    
+    return result
 

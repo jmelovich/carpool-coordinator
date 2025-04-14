@@ -4,7 +4,8 @@ from app.database import (
     create_user, get_user_by_id,
     get_user_by_username, get_user_by_email,
     get_quiz_by_id, save_quiz_results, get_specific_user_data, init_app, _substitute_context,
-    reserve_carpool_listing_id
+    reserve_carpool_listing_id, get_full_carpool_details, get_public_carpool_details,
+    check_user_missing_info
 )
 from flask_jwt_extended import (
     JWTManager, jwt_required, create_access_token, get_jwt_identity
@@ -131,18 +132,21 @@ def get_user(user_id):
         }
     })
 
-# the following routes are for testing purposes
-# they should be removed eventually
-
-@app.route('/api/test/users/<int:user_id>', methods=['GET'])
-def get_user_info(user_id):
-    try:
-        user = get_user_by_id(user_id)
-        if user is None:
-            return jsonify({'error': 'User not found'}), 404
-        return jsonify({'user': user})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+@app.route('/api/users/me/get-missing-info', methods=['GET'])
+@jwt_required()
+def get_missing_user_info():
+    """Get missing information for the current user across different tables"""
+    current_user_id = int(get_jwt_identity())
+    
+    # Check if user exists
+    user = get_user_by_id(current_user_id)
+    if not user:
+        return jsonify({'error': 'User not found'}), 404
+    
+    # Use the database helper function to check for missing information
+    missing_info_status = check_user_missing_info(current_user_id)
+    
+    return jsonify(missing_info_status)
 
 @app.route('/api/quiz/get', methods=['GET'])
 @jwt_required()
@@ -292,6 +296,59 @@ def reserve_carpool():
         'message': 'Carpool listing ID reserved successfully',
         'carpool_id': carpool_id
     }), 201
+
+@app.route('/api/carpool/get-full-listing', methods=['GET'])
+@jwt_required()
+def get_full_carpool_listing():
+    """Get full details of a carpool listing including passengers."""
+    # Get current user ID from JWT token
+    current_user_id = int(get_jwt_identity())
+    
+    # Get carpool_id from query parameters
+    carpool_id = request.args.get('carpool_id')
+    if not carpool_id:
+        return jsonify({'error': 'Carpool ID is required'}), 400
+        
+    try:
+        carpool_id = int(carpool_id)
+    except ValueError:
+        return jsonify({'error': 'Invalid carpool ID format'}), 400
+    
+    # Get full carpool details
+    carpool_details = get_full_carpool_details(carpool_id, current_user_id)
+    
+    if not carpool_details:
+        return jsonify({'error': 'Carpool listing not found or you are not authorized to access it'}), 404
+    
+    return jsonify({
+        'success': True,
+        'carpool': carpool_details
+    })
+
+@app.route('/api/carpool/get-public-listing', methods=['GET'])
+@jwt_required()
+def get_public_carpool_listing():
+    """Get public details of a carpool listing without sensitive information."""
+    # Get carpool_id from query parameters
+    carpool_id = request.args.get('carpool_id')
+    if not carpool_id:
+        return jsonify({'error': 'Carpool ID is required'}), 400
+        
+    try:
+        carpool_id = int(carpool_id)
+    except ValueError:
+        return jsonify({'error': 'Invalid carpool ID format'}), 400
+    
+    # Get public carpool details
+    carpool_details = get_public_carpool_details(carpool_id)
+    
+    if not carpool_details:
+        return jsonify({'error': 'Carpool listing not found'}), 404
+    
+    return jsonify({
+        'success': True,
+        'carpool': carpool_details
+    })
     
 
 

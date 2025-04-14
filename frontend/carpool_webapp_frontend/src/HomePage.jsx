@@ -35,6 +35,28 @@ function HomePage({ onLogout }) {
 
         const data = await response.json();
         setUsername(data.user.username);
+        
+        // Check for missing user info
+        const missingInfoResponse = await fetch('http://127.0.0.1:5000/api/users/me/get-missing-info', {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+        });
+        
+        if (missingInfoResponse.ok) {
+          const missingInfoData = await missingInfoResponse.json();
+          
+          // Check if user_info is complete
+          if (!missingInfoData.user_info.isComplete) {
+            const quizId = missingInfoData.user_info.quiz_id;
+            navigate(`/quiz?id=${quizId}`);
+            return;
+          }
+        } else {
+          console.error('Failed to fetch missing user info');
+        }
       } catch (error) {
         console.error('Error fetching user info:', error);
         setError('Failed to load user information');

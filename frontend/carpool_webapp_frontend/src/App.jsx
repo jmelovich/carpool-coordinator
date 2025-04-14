@@ -6,6 +6,7 @@ import Register from './Register';
 import HomePage from './HomePage';
 import CreateCarpool from './CreateCarpool';
 import MainCarpoolPage from './MainCarpoolPage';
+import CarpoolListingPage from './CarpoolListingPage';
 import LandingPage from './LandingPage';
 import DynamicQuizPage from './DynamicQuizPage';
 import Cookies from 'js-cookie';
@@ -104,6 +105,14 @@ function App() {
               ) : (
                 <Navigate to="/" replace />
               )
+            }
+          />
+          <Route
+            path="/carpool-listing"
+            element={
+
+                <CarpoolListingPage />
+
             }
           />
           <Route
