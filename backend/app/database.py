@@ -1634,3 +1634,122 @@ def delete_car(driver_id: int, license_plate: str) -> bool:
         print(f"Error deleting car {license_plate} for driver {driver_id}: {e}")
         return False
 
+def get_carpool_list(filters: Dict = None) -> List[Dict]:
+    """
+    Get available carpools with driver and car details based on optional filters.
+    Excludes incomplete carpool listings (those without origin or destination).
+    
+    Args:
+        filters: Optional dictionary containing filter criteria
+            - max_distance: Maximum distance from origin (not implemented yet)
+            - min_seats: Minimum available seats
+            - earliest_departure: Earliest departure time
+            - latest_arrival: Latest arrival time
+            - vehicle_types: List of preferred vehicle types
+            
+    Returns:
+        List of carpools with driver, car, and passenger information that match filters
+    """
+    db = get_db()
+    try:
+        # Get all carpools from the carpool_list table
+        query = '''
+            SELECT 
+                cl.carpool_id, cl.driver_id, cl.route_origin, cl.route_destination, 
+                cl.arrive_by, cl.leave_earliest, cl.carpool_capacity, cl.misc_data,
+                cl.created_at,
+                u.username as driver_username,
+                ui.given_name, ui.surname,
+                ci.make, ci.model, ci.year, ci.max_capacity, ci.license_plate
+            FROM carpool_list cl
+            JOIN users u ON cl.driver_id = u.id
+            LEFT JOIN user_info ui ON cl.driver_id = ui.user_id
+            LEFT JOIN car_info ci ON cl.vehicle_license_plate = ci.license_plate
+            WHERE cl.route_origin IS NOT NULL 
+              AND cl.route_destination IS NOT NULL
+              AND cl.route_origin != ''
+              AND cl.route_destination != ''
+        '''
+        
+        # Apply additional filters if provided
+        params = []
+        if filters:
+            # Filter by minimum available seats
+            if 'min_seats' in filters and filters['min_seats']:
+                min_seats = filters['min_seats']
+                # This is a placeholder - in a real implementation we'd need to join with passengers
+                # and calculate available seats dynamically
+            
+            # Filter by earliest departure time
+            if 'earliest_departure' in filters and filters['earliest_departure']:
+                # Time comparison would depend on how time is stored (string format)
+                pass
+                
+            # Filter by latest arrival time
+            if 'latest_arrival' in filters and filters['latest_arrival']:
+                # Time comparison would depend on how time is stored (string format)
+                pass
+                
+            # Filter by vehicle types
+            if 'vehicle_types' in filters and filters['vehicle_types']:
+                # Would need to search in make/model fields or add a vehicle_type field
+                pass
+        
+        # Execute the query
+        carpool_rows = db.execute(query, params).fetchall()
+
+        carpools = []
+        for row in carpool_rows:
+            carpool_id = row['carpool_id']
+            
+            # Get passenger count for this carpool
+            passenger_count = db.execute('''
+                SELECT COUNT(*) as count
+                FROM carpool_passengers
+                WHERE carpool_id = ?
+            ''', (carpool_id,)).fetchone()['count']
+            
+            # Parse any JSON data stored in misc_data
+            misc_data = {}
+            if row['misc_data']:
+                try:
+                    misc_data = json.loads(row['misc_data'])
+                except json.JSONDecodeError:
+                    misc_data = {}
+            
+            carpools.append({
+                'carpool_id': row['carpool_id'],
+                'driver': {
+                    'id': row['driver_id'],
+                    'username': row['driver_username'],
+                    'given_name': row['given_name'] or '',
+                    'surname': row['surname'] or '',
+                    'full_name': f"{row['given_name'] or ''} {row['surname'] or ''}".strip()
+                },
+                'route': {
+                    'origin': row['route_origin'],
+                    'destination': row['route_destination'],
+                    'arrive_by': row['arrive_by'],
+                    'leave_earliest': row['leave_earliest']
+                },
+                'vehicle': {
+                    'make': row['make'] or '',
+                    'model': row['model'] or '',
+                    'year': row['year'] or '',
+                    'license_plate': row['license_plate'] or '',
+                    'full_description': f"{row['year'] or ''} {row['make'] or ''} {row['model'] or ''}".strip()
+                },
+                'capacity': {
+                    'max': row['max_capacity'] or row['carpool_capacity'] or 0,
+                    'current': passenger_count
+                },
+                'created_at': row['created_at'],
+                'misc_data': misc_data
+            })
+        
+        return carpools
+            
+    except sqlite3.Error as e:
+        print(f"Error getting carpool list: {e}")
+        return []
+

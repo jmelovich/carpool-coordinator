@@ -5,7 +5,8 @@ from app.database import (
     get_user_by_username, get_user_by_email,
     get_quiz_by_id, save_quiz_results, get_specific_user_data, init_app, _substitute_context,
     reserve_carpool_listing_id, get_full_carpool_details, get_public_carpool_details,
-    check_user_missing_info, get_options_from_universal_id, get_user_full_profile, delete_car
+    check_user_missing_info, get_options_from_universal_id, get_user_full_profile, delete_car,
+    get_carpool_list
 )
 from flask_jwt_extended import (
     JWTManager, jwt_required, create_access_token, get_jwt_identity
@@ -465,26 +466,67 @@ def get_full_carpool_listing():
 @app.route('/api/carpool/get-public-listing', methods=['GET'])
 @jwt_required()
 def get_public_carpool_listing():
-    """Get public details of a carpool listing without sensitive information."""
+    """Get a carpool's public information (less details than the full listing)"""
     # Get carpool_id from query parameters
     carpool_id = request.args.get('carpool_id')
+    
     if not carpool_id:
         return jsonify({'error': 'Carpool ID is required'}), 400
-        
+    
     try:
         carpool_id = int(carpool_id)
     except ValueError:
-        return jsonify({'error': 'Invalid carpool ID format'}), 400
+        return jsonify({'error': 'Invalid Carpool ID format'}), 400
     
-    # Get public carpool details
-    carpool_details = get_public_carpool_details(carpool_id)
+    # Get carpool data from database
+    carpool_data = get_public_carpool_details(carpool_id)
     
-    if not carpool_details:
-        return jsonify({'error': 'Carpool listing not found'}), 404
+    if not carpool_data:
+        return jsonify({'error': 'Carpool not found'}), 404
     
     return jsonify({
         'success': True,
-        'carpool': carpool_details
+        'carpool': carpool_data
+    })
+
+@app.route('/api/carpools', methods=['GET'])
+@jwt_required()
+def get_carpools():
+    """Get available carpools with optional filters"""
+    # Get current user ID from JWT token
+    current_user_id = int(get_jwt_identity())
+    
+    # Extract filters from request parameters
+    filters = {}
+    
+    # If min seats specified
+    if request.args.get('min_seats'):
+        try:
+            filters['min_seats'] = int(request.args.get('min_seats'))
+        except ValueError:
+            pass
+    
+    # If earliest departure specified
+    if request.args.get('earliest_departure'):
+        filters['earliest_departure'] = request.args.get('earliest_departure')
+    
+    # If latest arrival specified
+    if request.args.get('latest_arrival'):
+        filters['latest_arrival'] = request.args.get('latest_arrival')
+    
+    # Get max distance if specified
+    if request.args.get('max_distance'):
+        try:
+            filters['max_distance'] = float(request.args.get('max_distance'))
+        except ValueError:
+            pass
+    
+    # Get filtered carpools from database
+    carpools = get_carpool_list(filters if filters else None)
+    
+    return jsonify({
+        'success': True,
+        'carpools': carpools
     })
     
 

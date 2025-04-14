@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import Cookies from 'js-cookie';
+import AddressInput from './components/AddressInput';
 
 function DynamicQuizPage() {
   const [username, setUsername] = useState('');
@@ -135,6 +136,16 @@ function DynamicQuizPage() {
             
             if (question.type === 'checkbox') {
               initialAnswers[question.id] = existingAnswer || [];
+            } else if (question.type === 'address' && existingAnswer) {
+              // Parse JSON string for address fields
+              try {
+                initialAnswers[question.id] = typeof existingAnswer === 'string' 
+                  ? JSON.parse(existingAnswer)
+                  : existingAnswer;
+              } catch (error) {
+                console.error('Error parsing address JSON:', error);
+                initialAnswers[question.id] = {};
+              }
             } else {
               initialAnswers[question.id] = existingAnswer || '';
             }
@@ -197,7 +208,38 @@ function DynamicQuizPage() {
     const questionIdMap = {};
     
     questions.forEach(question => {
-      universalIdAnswers[question.universal_id] = answers[question.id];
+      if (question.type === 'address') {
+        // For address questions, parse and format properly
+        let addressValue = answers[question.id];
+        
+        // Handle different address formats
+        if (typeof addressValue === 'string' && addressValue.trim() !== '') {
+          // Parse the address string into components
+          const addressObj = parseAddressString(addressValue);
+          universalIdAnswers[question.universal_id] = JSON.stringify(addressObj);
+        } else if (typeof addressValue === 'object' && addressValue !== null) {
+          // If it's already an object, ensure it has all required fields
+          const addressObj = {
+            street: addressValue.street || '',
+            city: addressValue.city || '',
+            state: addressValue.state || '',
+            zip: addressValue.zip || ''
+          };
+          universalIdAnswers[question.universal_id] = JSON.stringify(addressObj);
+        } else {
+          // If empty or invalid, use an empty object
+          universalIdAnswers[question.universal_id] = JSON.stringify({
+            street: '',
+            city: '',
+            state: '',
+            zip: ''
+          });
+        }
+      } else {
+        // For non-address questions, use the value as is
+        universalIdAnswers[question.universal_id] = answers[question.id];
+      }
+      
       questionIdMap[question.universal_id] = question.id;
     });
     
@@ -244,6 +286,112 @@ function DynamicQuizPage() {
     } catch (error) {
       console.error('Error saving quiz answers:', error);
       setError('Failed to save quiz answers. Please try again.');
+    }
+  };
+
+  // Helper function to parse a full address string into components
+  const parseAddressString = (addressStr) => {
+    // Default empty object
+    const defaultAddress = {
+      street: '',
+      city: '',
+      state: '',
+      zip: ''
+    };
+    
+    if (!addressStr || typeof addressStr !== 'string') {
+      return defaultAddress;
+    }
+    
+    try {
+      // Try to extract components using common patterns
+      
+      // First check if it's already JSON
+      try {
+        const parsed = JSON.parse(addressStr);
+        if (typeof parsed === 'object' && parsed !== null) {
+          return {
+            street: parsed.street || '',
+            city: parsed.city || '',
+            state: parsed.state || '',
+            zip: parsed.zip || ''
+          };
+        }
+      } catch (e) {
+        // Not JSON, continue with string parsing
+      }
+      
+      // Common format: "123 Main St, Anytown, NY 12345"
+      const parts = addressStr.split(',').map(part => part.trim());
+      
+      if (parts.length >= 3) {
+        // Has at least street, city, state+zip
+        const street = parts[0];
+        const city = parts[1];
+        
+        // Last part might be "NY 12345" or just "NY"
+        const stateZipPart = parts[parts.length - 1];
+        const stateZipMatch = stateZipPart.match(/([A-Z]{2})\s*(\d{5}(?:-\d{4})?)?/);
+        
+        if (stateZipMatch) {
+          const state = stateZipMatch[1] || '';
+          const zip = stateZipMatch[2] || '';
+          
+          return {
+            street,
+            city,
+            state,
+            zip
+          };
+        } else {
+          // Can't parse state/zip properly
+          return {
+            street,
+            city,
+            state: stateZipPart,
+            zip: ''
+          };
+        }
+      } else if (parts.length === 2) {
+        // Might be "123 Main St, Anytown NY 12345"
+        const street = parts[0];
+        const cityStateZip = parts[1];
+        
+        // Try to extract state and zip from second part
+        const cityStateZipMatch = cityStateZip.match(/(.+?)([A-Z]{2})\s*(\d{5}(?:-\d{4})?)?$/);
+        
+        if (cityStateZipMatch) {
+          const city = cityStateZipMatch[1].trim();
+          const state = cityStateZipMatch[2] || '';
+          const zip = cityStateZipMatch[3] || '';
+          
+          return {
+            street,
+            city,
+            state,
+            zip
+          };
+        } else {
+          // Can't parse properly
+          return {
+            street,
+            city: cityStateZip,
+            state: '',
+            zip: ''
+          };
+        }
+      } else {
+        // Can't parse properly, just use as street
+        return {
+          street: addressStr,
+          city: '',
+          state: '',
+          zip: ''
+        };
+      }
+    } catch (error) {
+      console.error('Error parsing address:', error);
+      return defaultAddress;
     }
   };
 
@@ -461,45 +609,24 @@ function DynamicQuizPage() {
         );
       
       case 'address':
+        // For the newer address input format
+        const addressValue = typeof answers[question.id] === 'string' 
+          ? answers[question.id] || ''
+          : (answers[question.id] && 
+             typeof answers[question.id] === 'object' && 
+             answers[question.id].street)
+            ? `${answers[question.id].street}, ${answers[question.id].city || ''}, ${answers[question.id].state || ''} ${answers[question.id].zip || ''}`
+            : '';
+            
         return (
           <div className="space-y-2">
-            <input
-              type="text"
-              id={`${question.id}-street`}
-              placeholder="Street Address"
-              value={(answers[question.id] || {}).street || ''}
-              onChange={(e) => handleInputChange(question.id, {...(answers[question.id] || {}), street: e.target.value})}
-              className="w-full p-2 border border-gray-300 rounded"
-              required={question.required}
-            />
-            <div className="flex gap-2">
-              <input
-                type="text"
-                id={`${question.id}-city`}
-                placeholder="City"
-                value={(answers[question.id] || {}).city || ''}
-                onChange={(e) => handleInputChange(question.id, {...(answers[question.id] || {}), city: e.target.value})}
-                className="w-full p-2 border border-gray-300 rounded"
-                required={question.required}
-              />
-              <input
-                type="text"
-                id={`${question.id}-state`}
-                placeholder="State"
-                value={(answers[question.id] || {}).state || ''}
-                onChange={(e) => handleInputChange(question.id, {...(answers[question.id] || {}), state: e.target.value})}
-                className="w-full p-2 border border-gray-300 rounded"
-                required={question.required}
-              />
-            </div>
-            <input
-              type="text"
-              id={`${question.id}-zip`}
-              placeholder="ZIP Code"
-              value={(answers[question.id] || {}).zip || ''}
-              onChange={(e) => handleInputChange(question.id, {...(answers[question.id] || {}), zip: e.target.value})}
-              className="w-full p-2 border border-gray-300 rounded"
-              required={question.required}
+            <AddressInput
+              value={addressValue}
+              onChange={(value) => {
+                // Store as a simple string for Google Maps integration
+                handleInputChange(question.id, value);
+              }}
+              placeholder="Enter address"
             />
           </div>
         );

@@ -194,4 +194,85 @@
   .btn-danger:hover {
     background-color: #DC2626;
   }
+
+  /* === CARPOOL PAGE SPECIFIC STYLES === */
+
+  /* Fix scrollable container */
+  .overflow-y-auto {
+    overflow-y: auto !important;
+    scrollbar-width: thin;
+    scrollbar-color: #d1d5db transparent;
+  }
+
+  .overflow-y-auto::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  .overflow-y-auto::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .overflow-y-auto::-webkit-scrollbar-thumb {
+    background-color: #d1d5db;
+    border-radius: 20px;
+  }
+
+  /* Fix address input */
+  .address-input {
+    position: relative;
+    width: 100%;
+  }
+
+  .address-input svg {
+    flex-shrink: 0;
+    width: 16px !important;
+    height: 16px !important;
+  }
+
+  /* Ensure the modal is constrained */
+  .fixed.z-50 {
+    z-index: 50;
+  }
+
+  .max-w-md {
+    max-width: 28rem !important;
+  }
+
+  /* Improve button styles */
+  button.px-4.py-3 {
+    margin: 0; /* Override default button margin */
+  }
+
+  /* Fix modal positioning */
+  .fixed.inset-0.z-50.flex.items-center.justify-center {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+  }
+
+  .fixed.inset-0.z-50.flex.items-center.justify-center > div {
+    margin: 0 auto !important;
+    width: 100% !important;
+    max-width: 28rem !important;
+    position: relative !important;
+  }
+
+  /* Make address input have proper cursor */
+  .address-input .cursor-pointer,
+  .address-input div[role="button"],
+  .address-input div.cursor-pointer {
+    cursor: pointer !important;
+  }
+
+  /* Force proper map container display */
+  .gm-style {
+    position: relative;
+    width: 100% !important;
+    height: 100% !important;
+  }
+
+  /* Higher z-index for the address input modal */
+  .address-input .fixed.inset-0.z-50 {
+    z-index: 9999 !important;
+  }
   
