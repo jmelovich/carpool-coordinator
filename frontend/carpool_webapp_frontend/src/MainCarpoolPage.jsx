@@ -350,8 +350,8 @@ function MainCarpoolPage({ onLogout }) {
              </div>
 
             {/* Scrollable List Area - Fixed height container */}
-            <div className="border rounded-lg overflow-hidden" style={{ height: '400px' }}>
-              <div className="h-full overflow-y-auto">
+            <div className="border rounded-lg overflow-hidden" style={{ height: '400px', position: 'relative' }}>
+              <div className="h-full overflow-y-auto" style={{ position: 'absolute', inset: '0', width: '100%' }}>
                 {loading ? (
                   <div className="flex justify-center items-center h-full">
                     <p className="text-gray-500">Loading carpools...</p>

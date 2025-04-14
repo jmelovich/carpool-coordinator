@@ -66,13 +66,12 @@
    ========================================================================== */
 body {
   margin: 0;
-  display: flex;
-  justify-content: center;
-  flex-direction: column;
+  display: block;
   min-width: 320px;
-  min-height: 100%;
+  min-height: 100vh;
   text-align: center;
   overflow-x: hidden;
+  position: relative;
 }
 
 a {
@@ -266,9 +265,9 @@ button.px-4.py-3 {
   padding: var(--spacing-xxl);
 }
 
-/* Modal positioning */
+/* Modal positioning - Fixed z-index and positioning issues */
 .fixed.z-50 {
-  z-index: 50;
+  z-index: 9000 !important;
 }
 
 .max-w-md {
@@ -279,6 +278,11 @@ button.px-4.py-3 {
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
 }
 
 .fixed.inset-0.z-50.flex.items-center.justify-center > div {
@@ -305,11 +309,15 @@ button.px-4.py-3 {
 /* ==========================================================================
    Utility classes
    ========================================================================== */
-/* Scrollbar styling */
+/* Scrollbar styling - Fixed scrolling behavior */
 .overflow-y-auto {
   overflow-y: auto !important;
   scrollbar-width: thin;
   scrollbar-color: var(--color-scrollbar) transparent;
+  height: 100% !important;
+  display: block !important;
+  max-height: inherit;
+  position: relative !important;
 }
 
 .overflow-y-auto::-webkit-scrollbar {
@@ -323,6 +331,22 @@ button.px-4.py-3 {
 .overflow-y-auto::-webkit-scrollbar-thumb {
   background-color: var(--color-scrollbar);
   border-radius: 20px;
+}
+
+/* Fix for carpool list container */
+div[style*="height: 400px"] {
+  height: 400px !important;
+  position: relative !important;
+  overflow: hidden !important;
+}
+
+div[style*="height: 400px"] > .overflow-y-auto {
+  position: absolute !important;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100%;
 }
 
 /* ==========================================================================

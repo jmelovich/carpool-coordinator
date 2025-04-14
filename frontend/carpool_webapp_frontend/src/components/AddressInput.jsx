@@ -16,6 +16,7 @@ const AddressInput = ({ value, onChange, placeholder }) => {
   
   const autocompleteRef = useRef(null);
   const inputRef = useRef(null);
+  const containerRef = useRef(null);
 
   const { isLoaded, loadError } = useJsApiLoader({
     googleMapsApiKey: import.meta.env.APP_GOOGLE_MAP_API_KEY,
@@ -61,6 +62,19 @@ const AddressInput = ({ value, onChange, placeholder }) => {
       const place = autocomplete.getPlace();
       onPlaceSelected(place);
     });
+    
+    // Fix for autocomplete dropdown positioning
+    if (inputRef.current && containerRef.current) {
+      // Set styles to force the autocomplete dropdown to stay within the modal
+      setTimeout(() => {
+        const pacContainers = document.querySelectorAll('.pac-container');
+        pacContainers.forEach(container => {
+          container.style.zIndex = "10000";
+          container.style.position = "absolute";
+          container.style.width = `${inputRef.current.offsetWidth}px`;
+        });
+      }, 300);
+    }
   };
 
   useEffect(() => {
@@ -104,6 +118,45 @@ const AddressInput = ({ value, onChange, placeholder }) => {
     });
   };
 
+  // Added to prevent scroll when modal is open
+  useEffect(() => {
+    if (showModal) {
+      document.body.style.overflow = 'hidden';
+      
+      // Add global styles for autocomplete dropdown
+      const style = document.createElement('style');
+      style.textContent = `
+        .pac-container {
+          z-index: 10000 !important;
+          margin-top: 2px !important;
+          border-radius: 6px !important;
+          box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1) !important;
+          border: 1px solid #e5e7eb !important;
+          background-color: white !important;
+        }
+        .pac-item {
+          padding: 8px 10px !important;
+          cursor: pointer !important;
+        }
+        .pac-item:hover {
+          background-color: #f9fafb !important;
+        }
+      `;
+      document.head.appendChild(style);
+      
+      return () => {
+        document.body.style.overflow = '';
+        document.head.removeChild(style);
+      };
+    } else {
+      document.body.style.overflow = '';
+    }
+    
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [showModal]);
+
   return (
     <div className="relative address-input">
       <div 
@@ -122,24 +175,42 @@ const AddressInput = ({ value, onChange, placeholder }) => {
       </div>
       
       {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
-          <div className="bg-white rounded-lg p-4 w-full max-w-md max-h-[90vh] overflow-auto mx-auto">
-            <h3 className="text-lg font-medium mb-2">Select Address</h3>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ 
+          position: 'fixed',
+          backgroundColor: 'rgba(0, 0, 0, 0.75)', // Darker background
+          zIndex: 9999
+        }}>
+          <div 
+            ref={containerRef}
+            className="bg-white rounded-xl p-6 w-full max-w-md max-h-[90vh] overflow-auto mx-auto shadow-xl" 
+            style={{ 
+              boxShadow: '0 10px 25px rgba(0, 0, 0, 0.2)', 
+              borderRadius: '12px',
+              border: '1px solid rgba(255, 255, 255, 0.1)',
+              backgroundColor: 'rgba(0, 0, 0, 0.6)',
+              zIndex: 10000,
+              position: 'relative'
+            }}
+          >
+            <h3 className="text-xl font-medium mb-4 text-gray-800">Select Address</h3>
             
-            <div className="mb-4">
+            <div className="mb-6 relative">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Enter Address
+              </label>
               <input
                 ref={inputRef}
                 type="text"
                 placeholder="Start typing an address..."
-                className="w-full p-2 border rounded"
+                className="w-full p-3 border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
                 defaultValue={address}
               />
-              <p className="text-sm text-gray-500 mt-1">
+              <p className="text-sm text-gray-500 mt-2">
                 Type an address or click on the map to select a location
               </p>
             </div>
             
-            <div className="mb-4 rounded overflow-hidden border">
+            <div className="mb-6 rounded-lg overflow-hidden border border-gray-300 shadow-sm">
               {isLoaded ? (
                 <GoogleMap
                   mapContainerStyle={mapContainerStyle}
@@ -156,16 +227,16 @@ const AddressInput = ({ value, onChange, placeholder }) => {
               )}
             </div>
             
-            <div className="flex justify-end space-x-2">
+            <div className="flex justify-end space-x-3">
               <button
                 onClick={closeModal}
-                className="px-4 py-2 bg-gray-300 text-gray-800 rounded-lg hover:bg-gray-400 m-0"
+                className="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors m-0"
               >
                 Cancel
               </button>
               <button
                 onClick={confirmAddress}
-                className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 m-0"
+                className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors m-0"
               >
                 Confirm Address
               </button>
