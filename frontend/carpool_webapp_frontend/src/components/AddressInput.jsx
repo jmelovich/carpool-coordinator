@@ -62,19 +62,6 @@ const AddressInput = ({ value, onChange, placeholder }) => {
       const place = autocomplete.getPlace();
       onPlaceSelected(place);
     });
-    
-    // Fix for autocomplete dropdown positioning
-    if (inputRef.current && containerRef.current) {
-      // Set styles to force the autocomplete dropdown to stay within the modal
-      setTimeout(() => {
-        const pacContainers = document.querySelectorAll('.pac-container');
-        pacContainers.forEach(container => {
-          container.style.zIndex = "10000";
-          container.style.position = "absolute";
-          container.style.width = `${inputRef.current.offsetWidth}px`;
-        });
-      }, 300);
-    }
   };
 
   useEffect(() => {
@@ -122,32 +109,6 @@ const AddressInput = ({ value, onChange, placeholder }) => {
   useEffect(() => {
     if (showModal) {
       document.body.style.overflow = 'hidden';
-      
-      // Add global styles for autocomplete dropdown
-      const style = document.createElement('style');
-      style.textContent = `
-        .pac-container {
-          z-index: 10000 !important;
-          margin-top: 2px !important;
-          border-radius: 6px !important;
-          box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1) !important;
-          border: 1px solid #e5e7eb !important;
-          background-color: white !important;
-        }
-        .pac-item {
-          padding: 8px 10px !important;
-          cursor: pointer !important;
-        }
-        .pac-item:hover {
-          background-color: #f9fafb !important;
-        }
-      `;
-      document.head.appendChild(style);
-      
-      return () => {
-        document.body.style.overflow = '';
-        document.head.removeChild(style);
-      };
     } else {
       document.body.style.overflow = '';
     }
