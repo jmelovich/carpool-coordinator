@@ -1,0 +1,337 @@
+[
+  {
+    "id": "test_quiz",
+    "title": "Test Quiz",
+    "description": "This quiz demonstrates each question type available in our system.",
+    "return_address": "/home",
+    "questions": [
+      {
+        "id": "q1",
+        "type": "short_text",
+        "required": true,
+        "question": "What is your favorite color?",
+        "universal_id": "user_info[user_id:<user_id>]@misc_user_data->favorite_color"
+      },
+      {
+        "id": "q2",
+        "type": "dropdown",
+        "required": true,
+        "question": "Choose your preferred mode of transport:",
+        "options": ["Car", "Bicycle", "Public Transport", "Walking"],
+        "universal_id": "user_info[user_id:<user_id>]@misc_user_data->transport_mode"
+      },
+      {
+        "id": "q3",
+        "type": "multiple_choice",
+        "required": true,
+        "question": "Select your preferred meal time:",
+        "options": ["Breakfast", "Lunch", "Dinner"],
+        "universal_id": "user_info[user_id:<user_id>]@misc_user_data->meal_time"
+      },
+      {
+        "id": "q4",
+        "type": "checkbox",
+        "required": false,
+        "question": "Which hobbies do you enjoy?",
+        "options": ["Reading", "Traveling", "Cooking", "Sports"],
+        "universal_id": "user_info[user_id:<user_id>]@misc_user_data->hobbies"
+      },
+      {
+        "id": "q5",
+        "type": "long_text",
+        "required": false,
+        "question": "Please describe your ideal vacation.",
+        "universal_id": "user_info[user_id:<user_id>]@misc_user_data->vacation_description"
+      },
+      {
+        "id": "q6",
+        "type": "address",
+        "required": true,
+        "question": "What is your current address?",
+        "universal_id": "user_info[user_id:<user_id>]@misc_user_data->current_address"
+      },
+      {
+        "id": "q7",
+        "type": "date",
+        "required": true,
+        "question": "What is your favorite date?",
+        "universal_id": "user_info[user_id:<user_id>]@misc_user_data->favorite_date"
+      },
+      {
+        "id": "q8",
+        "type": "time",
+        "required": true,
+        "question": "What is your favorite time?",
+        "universal_id": "user_info[user_id:<user_id>]@misc_user_data->favorite_time"
+      },
+      {
+        "id": "q9",
+        "type": "date_time",
+        "required": true,
+        "question": "What is your favorite date & time?",
+        "universal_id": "user_info[user_id:<user_id>]@misc_user_data->favorite_date_time"
+      },
+      {
+        "id": "q10",
+        "type": "integer",
+        "required": true,
+        "question": "What is your favorite number?",
+        "universal_id": "user_info[user_id:<user_id>]@misc_user_data->favorite_number"
+      }
+    ]
+  },
+  {
+    "id": "user_info_quiz",
+    "title": "User Information Collection",
+    "description": "Please fill out the following questions.",
+    "return_address": "/home",
+    "questions": [
+      {
+        "id": "q1",
+        "type": "short_text",
+        "required": true,
+        "question": "What is your given (first) name?",
+        "universal_id": "user_info[user_id:<user_id>]@given_name"
+      },
+      {
+        "id": "q2",
+        "type": "short_text",
+        "required": true,
+        "question": "What is your surname (last name)?",
+        "universal_id": "user_info[user_id:<user_id>]@surname"
+      },
+      {
+        "id": "q3",
+        "type": "multiple_choice",
+        "required": true,
+        "question": "What is your sex (as shown on driver's license)?",
+        "options": ["Male", "Female"],
+        "universal_id": "user_info[user_id:<user_id>]@sex"
+      },
+      {
+        "id": "q4",
+        "type": "date",
+        "required": true,
+        "question": "When is your birth date?",
+        "universal_id": "user_info[user_id:<user_id>]@birth_date"
+      },
+      {
+        "id": "q5",
+        "type": "address",
+        "required": true,
+        "question": "What is your primary address?",
+        "universal_id": "user_info[user_id:<user_id>]@home_address"
+      }
+    ]
+  },
+  {
+    "id": "driver_info_quiz",
+    "title": "Driver Information Collection",
+    "description": "To be a driver (and host a carpool), please fill out the following information.",
+    "return_address": "<return_override>",
+    "questions": [
+      {
+        "id": "q1",
+        "type": "short_text",
+        "required": true,
+        "question": "What is your driver's license number?",
+        "universal_id": "driver_info[driver_id:<user_id>]@dln"
+      },
+      {
+        "id": "q2",
+        "type": "date",
+        "required": true,
+        "question": "What is your driver's license expiration date?",
+        "universal_id": "driver_info[driver_id:<user_id>]@license_expiration"
+      },
+      {
+        "id": "q3",
+        "type": "dropdown",
+        "required": true,
+        "question": "What is the State the license was issued in?",
+        "options": ["AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA", "HI", "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD", "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ", "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI", "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY"],
+        "universal_id": "driver_info[driver_id:<user_id>]@licensed_state"
+      }
+    ],
+    "conditional_questions": [
+      {
+        "id": "q4",
+        "type": "dropdown",
+        "required": false,
+        "question": "Which car will you be using for this carpool? (Leave blank to register a new car)",
+        "options": "car_info[driver_id:<user_id>]@license_plate",
+        "conditions": [      
+          {
+            "value1": "<creating_carpool>",
+            "condition": "==",
+            "value2": "true"
+          }
+        ],
+        "universal_id": "<plate>"
+      }
+    ],
+    "completion_operation": [
+      {
+        "value": "/quiz?id=car_info_quiz&plate=<plate>&creating_carpool=true",
+        "universal_id": "<return_override>",
+        "conditions": [
+          {
+            "value1": "<creating_carpool>",
+            "condition": "==",
+            "value2": "true"
+          }
+        ]
+      },
+      {
+        "value": "/profile",
+        "universal_id": "<return_override>",
+        "conditions": [
+          {
+            "value1": "<creating_carpool>",
+            "condition": "==",
+            "value2": ""
+          }
+        ]
+      }
+    ]
+  }
+  ,
+  {
+    "id": "car_info_quiz",
+    "title": "Car Information Collection",
+    "description": "Now lets us know about the car you will be driving.",
+    "return_address": "/carpool",
+    "questions": [
+      {
+        "id": "q1",
+        "type": "dropdown",
+        "required": true,
+        "question": "In which state is the car registered?",
+        "options": ["AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA", "HI", "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD", "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ", "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI", "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY"],
+        "universal_id": "car_info[license_plate:<plate>]@registered_state"
+      },
+      {
+        "id": "q2",
+        "type": "short_text",
+        "required": true,
+        "question": "What is the make of the car (Honda, Mazda, etc...)?",
+        "universal_id": "car_info[license_plate:<plate>]@make"
+      },
+      {
+        "id": "q3",
+        "type": "short_text",
+        "required": true,
+        "question": "What is the model of the car (Civic, Pilot, Mazda3, etc...)?",
+        "universal_id": "car_info[license_plate:<plate>]@model"
+      },
+      {
+        "id": "q4",
+        "type": "integer",
+        "required": true,
+        "question": "What is the year of the car (2006, 1997, etc...)?",
+        "universal_id": "car_info[license_plate:<plate>]@year"
+      },
+      {
+        "id": "q5",
+        "type": "integer",
+        "required": true,
+        "question": "How many people can comfortably fit in the car (including you)?",
+        "universal_id": "car_info[license_plate:<plate>]@max_capacity"
+      }
+    ],
+    "completion_operation": [
+      {
+        "value": "<user_id>",
+        "universal_id": "car_info[license_plate:<plate>]@driver_id"
+      }
+    ],
+    "conditional_questions": [
+      {
+        "id": "q6",
+        "type": "short_text",
+        "required": true,
+        "question": "What is the license plate of this car?",
+        "conditions": [      
+          {
+            "value1": "<plate>",
+            "condition": "==",
+            "value2": ""
+          }
+        ],
+        "universal_id": "<plate>"
+      }
+    ]
+  }
+  ,
+  {
+    "id": "create_carpool",
+    "title": "Create a New Carpool Listing",
+    "description": "Please fill out the following questions to create your carpool listing.",
+    "return_address": "/carpool",
+    "questions": [
+      {
+        "id": "q1",
+        "type": "address",
+        "required": true,
+        "question": "Where are you going?",
+        "universal_id": "carpool_list[carpool_id:<new_listing_id>]@route_destination"
+      },
+      {
+        "id": "q2",
+        "type": "date_time",
+        "required": true,
+        "question": "When do do you need to be there by?",
+        "universal_id": "carpool_list[carpool_id:<new_listing_id>]@arrive_by"
+      },
+      {
+        "id": "q3",
+        "type": "address",
+        "required": true,
+        "question": "Where do you leave from?",
+        "universal_id": "carpool_list[carpool_id:<new_listing_id>]@route_origin"
+      },
+      {
+        "id": "q4",
+        "type": "date_time",
+        "required": true,
+        "question": "When is the earliest you can leave by?",
+        "universal_id": "carpool_list[carpool_id:<new_listing_id>]@leave_earliest"
+      },
+      {
+        "id": "q5",
+        "type": "integer",
+        "required": true,
+        "question": "How many passengers can you include?",
+        "universal_id": "carpool_list[carpool_id:<new_listing_id>]@carpool_capacity"
+      },
+      {
+        "id": "q6",
+        "type": "dropdown",
+        "required": true,
+        "question": "Which vehicle will you be using (license plate)?",
+        "options": "car_info[driver_id:<user_id>]@license_plate",
+        "universal_id": "carpool_list[carpool_id:<new_listing_id>]@vehicle_license_plate"
+      }
+    ],
+    "completion_operation": [
+      {
+        "value": "<user_id>",
+        "universal_id": "carpool_list[carpool_id:<new_listing_id>]@driver_id"
+      }
+    ],
+    "preconditions": [
+      {
+        "value1": "<user_id>",
+        "condition": "==",
+        "value2": "carpool_list[carpool_id:<new_listing_id>]@driver_id",
+        "failure_message": "You attempted to create a carpool with an invalid ID!"
+      },
+      {
+        "value1": "carpool_list[carpool_id:<new_listing_id>]@route_destination",
+        "condition": "==",
+        "value2": "NULL",
+        "failure_message": "You attempted to overwrite an existing carpool!"
+      }
+    ]
+  }
+]
