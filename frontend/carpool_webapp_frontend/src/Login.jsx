@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Cookies from 'js-cookie';
 import './styles/styles.css';
+import background from './assets/green_splash_2.png';
 
 function Login({ setIsAuthenticated }) {
   const [formData, setFormData] = useState({
@@ -46,47 +47,55 @@ function Login({ setIsAuthenticated }) {
 
   return (
     <div className="mt-6 p-6 bg-white shadow-lg rounded-lg border w-80">
-      <div>
-        <h2 className="text-lg font-semibold mb-2">Log In</h2>
+      <div style={{backgroundImage: `url(${background})`, 
+      backgroundRepeat: "no-repeat", 
+      backgroundSize: "cover",
+      width:"89%",
+      margin:"0 auto", 
+      borderRadius:"20px",
+      height: "55em"}}>
+        <h2 className="text-lg font-semibold mb-2" style={{color: '#F3F0D7', paddingTop: "186px"}}>Welcome back!</h2>
 
         {message && (
           <div className={`alert ${message.type === "success" ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"} p-4 mb-4`}>
             {message.text}
           </div>
         )}
-
-        <form onSubmit={handleLogin}>
-          <label className="largeLabel" htmlFor="username">
-            <input
-              className="inputBox w-full p-2 mb-2 border rounded"
-              type="text"
-              name="username"
-              id="username"
-              placeholder="Username"
-              value={formData.username}
-              onChange={handleChange}
-              required
-            />
-          </label>
-          <label className="largeLabel" htmlFor="password">
-            <input
-              className="inputBox w-full p-2 mb-4 border rounded"
-              type="password"
-              name="password"
-              id="password"
-              placeholder="Password"
-              value={formData.password}
-              onChange={handleChange}
-              required
-            />
-          </label>
-          <button
-            type="submit"
-            className="w-full p-2 bg-[#87CEEB] text-[#333333] rounded-lg hover:bg-[#6bb5d8]"
-          >
-            Log In
-          </button>
-        </form>
+        <div style={{backgroundColor: '#233d14', borderRadius:"20px", margin: "1em 700px"}}>
+          <form onSubmit={handleLogin}>
+            <label className="largeLabel" style={{marginTop: "2em"}} htmlFor="username">
+              <input
+                className="inputBoxLoginRegister"
+                type="text"
+                name="username"
+                id="username"
+                placeholder="Username"
+                value={formData.username}
+                onChange={handleChange}
+                required
+              />
+            </label>
+            <label className="largeLabel" style={{marginTop: "10px"}} htmlFor="password">
+              <input
+                className="inputBoxLoginRegister"
+                type="password"
+                name="password"
+                id="password"
+                placeholder="Password"
+                value={formData.password}
+                onChange={handleChange}
+                required
+              />
+            </label>
+            <button
+              type="submit"
+              className="buttonLoginRegister w-full p-2 bg-[#87CEEB] text-[#333333] rounded-lg hover:bg-[#6bb5d8]"
+              style={{margin: "8px auto", width: "8em"}}
+            >
+              Log In
+            </button>
+          </form>
+        </div>
       </div>
     </div>
   );
