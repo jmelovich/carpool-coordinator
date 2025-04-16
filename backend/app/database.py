@@ -1634,6 +1634,60 @@ def delete_car(driver_id: int, license_plate: str) -> bool:
         print(f"Error deleting car {license_plate} for driver {driver_id}: {e}")
         return False
 
+def get_route_information(carpool: Dict, filters: Dict) -> Dict:
+    """
+    Calculate route information between user's pickup/dropoff locations and the carpool's route.
+    This will be used to determine if a carpool is a good match for the user based on distance,
+    time, and other route-related factors.
+    
+    Args:
+        carpool: Dictionary containing carpool information
+        filters: Dictionary containing filter criteria including:
+            - pickup_location: User's pickup location
+            - dropoff_location: User's dropoff location
+            - travel_date: Date of travel
+            
+    Returns:
+        Dictionary containing route information:
+            - pickup_distance: Distance from user's pickup to carpool origin
+            - dropoff_distance: Distance from carpool destination to user's dropoff
+            - total_distance: Total distance of the route
+            - total_duration: Total duration of the route in minutes
+            - pickup_time: Estimated pickup time
+            - dropoff_time: Estimated dropoff time
+            - is_viable: Whether this carpool is viable for the user
+    """
+    # Just a placeholder implementation - in a real implementation,
+    # this would make calls to the Google Maps API or similar service
+    # to calculate route metrics
+    
+    pickup_location = filters.get('pickup_location')
+    dropoff_location = filters.get('dropoff_location')
+    travel_date = filters.get('travel_date')
+    
+    # For now, return a simple structure that would be populated with real data later
+    route_info = {
+        'pickup_location': pickup_location,
+        'dropoff_location': dropoff_location,
+        'travel_date': travel_date,
+        'pickup_distance': 0,  # Distance in miles from user pickup to carpool origin
+        'dropoff_distance': 0,  # Distance in miles from carpool destination to user dropoff
+        'total_distance': 0,    # Total route distance in miles
+        'total_duration': 0,    # Total route duration in minutes
+        'pickup_time': None,    # Estimated pickup time
+        'dropoff_time': None,   # Estimated dropoff time
+        'is_viable': True       # Whether this carpool is viable for the user
+    }
+    
+    # In a real implementation, we would:
+    # 1. Use the google maps API to create a route with the existing driver's & passenger's pickup and dropoff locations
+    # 2. Then add the user's pickup and dropoff locations to the route
+    # 3. Determine if the carpool can accommodate these detours (based on driver's & other passenger's set earliest pickup and latest arrival times)
+    # 4. Calculate estimated pickup and dropoff times with the new route (if viable)
+    # 5. Set is_viable based on whether the carpool can accommodate the user
+    
+    return route_info
+
 def get_carpool_list(filters: Dict = None) -> List[Dict]:
     """
     Get available carpools with driver and car details based on optional filters.
@@ -1641,11 +1695,12 @@ def get_carpool_list(filters: Dict = None) -> List[Dict]:
     
     Args:
         filters: Optional dictionary containing filter criteria
-            - max_distance: Maximum distance from origin (not implemented yet)
+            - pickup_location: User's pickup location
+            - dropoff_location: User's dropoff location
+            - travel_date: Date of travel
             - min_seats: Minimum available seats
-            - earliest_departure: Earliest departure time
+            - earliest_pickup: Earliest pickup time
             - latest_arrival: Latest arrival time
-            - vehicle_types: List of preferred vehicle types
             
     Returns:
         List of carpools with driver, car, and passenger information that match filters
@@ -1674,25 +1729,26 @@ def get_carpool_list(filters: Dict = None) -> List[Dict]:
         # Apply additional filters if provided
         params = []
         if filters:
+            # Filter by pickup location, dropoff location, and travel date would be handled
+            # by the get_route_information function for each carpool
+            pickup_location = filters.get('pickup_location')
+            dropoff_location = filters.get('dropoff_location')
+            travel_date = filters.get('travel_date')
+            
             # Filter by minimum available seats
             if 'min_seats' in filters and filters['min_seats']:
                 min_seats = filters['min_seats']
                 # This is a placeholder - in a real implementation we'd need to join with passengers
                 # and calculate available seats dynamically
             
-            # Filter by earliest departure time
-            if 'earliest_departure' in filters and filters['earliest_departure']:
+            # Filter by earliest pickup time
+            if 'earliest_pickup' in filters and filters['earliest_pickup']:
                 # Time comparison would depend on how time is stored (string format)
                 pass
                 
             # Filter by latest arrival time
             if 'latest_arrival' in filters and filters['latest_arrival']:
                 # Time comparison would depend on how time is stored (string format)
-                pass
-                
-            # Filter by vehicle types
-            if 'vehicle_types' in filters and filters['vehicle_types']:
-                # Would need to search in make/model fields or add a vehicle_type field
                 pass
         
         # Execute the query
@@ -1717,7 +1773,7 @@ def get_carpool_list(filters: Dict = None) -> List[Dict]:
                 except json.JSONDecodeError:
                     misc_data = {}
             
-            carpools.append({
+            carpool = {
                 'carpool_id': row['carpool_id'],
                 'driver': {
                     'id': row['driver_id'],
@@ -1745,7 +1801,15 @@ def get_carpool_list(filters: Dict = None) -> List[Dict]:
                 },
                 'created_at': row['created_at'],
                 'misc_data': misc_data
-            })
+            }
+            
+            # Get route information if user provided pickup/dropoff locations
+            if filters and (filters.get('pickup_location') or filters.get('dropoff_location')):
+                route_info = get_route_information(carpool, filters)
+                if route_info:
+                    carpool['route_info'] = route_info
+            
+            carpools.append(carpool)
         
         return carpools
             

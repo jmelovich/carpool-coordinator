@@ -499,6 +499,16 @@ def get_carpools():
     # Extract filters from request parameters
     filters = {}
     
+    # Get location and date filters
+    if request.args.get('pickup_location'):
+        filters['pickup_location'] = request.args.get('pickup_location')
+    
+    if request.args.get('dropoff_location'):
+        filters['dropoff_location'] = request.args.get('dropoff_location')
+    
+    if request.args.get('travel_date'):
+        filters['travel_date'] = request.args.get('travel_date')
+    
     # If min seats specified
     if request.args.get('min_seats'):
         try:
@@ -506,20 +516,13 @@ def get_carpools():
         except ValueError:
             pass
     
-    # If earliest departure specified
-    if request.args.get('earliest_departure'):
-        filters['earliest_departure'] = request.args.get('earliest_departure')
+    # If earliest pickup specified
+    if request.args.get('earliest_pickup'):
+        filters['earliest_pickup'] = request.args.get('earliest_pickup')
     
     # If latest arrival specified
     if request.args.get('latest_arrival'):
         filters['latest_arrival'] = request.args.get('latest_arrival')
-    
-    # Get max distance if specified
-    if request.args.get('max_distance'):
-        try:
-            filters['max_distance'] = float(request.args.get('max_distance'))
-        except ValueError:
-            pass
     
     # Get filtered carpools from database
     carpools = get_carpool_list(filters if filters else None)

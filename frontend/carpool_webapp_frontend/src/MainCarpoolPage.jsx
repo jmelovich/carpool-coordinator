@@ -13,7 +13,6 @@ function MainCarpoolPage({ onLogout }) {
   const [dropoffLocation, setDropoffLocation] = useState('');
   const [travelDate, setTravelDate] = useState('');
   const [filters, setFilters] = useState({
-    maxDistance: 50,
     earliestPickupTime: '',
     latestArrival: '',
     minSeatsAvailable: 1
@@ -33,7 +32,20 @@ function MainCarpoolPage({ onLogout }) {
     }
 
     try {
-      const response = await fetch('http://127.0.0.1:5000/api/carpools', {
+      // Create URL with query parameters for filters
+      let url = new URL('http://127.0.0.1:5000/api/carpools');
+      
+      // Add filter parameters
+      if (pickupLocation) url.searchParams.append('pickup_location', pickupLocation);
+      if (dropoffLocation) url.searchParams.append('dropoff_location', dropoffLocation);
+      if (travelDate) url.searchParams.append('travel_date', travelDate);
+      
+      // Add other filters
+      if (filters.earliestPickupTime) url.searchParams.append('earliest_pickup', filters.earliestPickupTime);
+      if (filters.latestArrival) url.searchParams.append('latest_arrival', filters.latestArrival);
+      if (filters.minSeatsAvailable) url.searchParams.append('min_seats', filters.minSeatsAvailable);
+
+      const response = await fetch(url.toString(), {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${accessToken}`,
@@ -53,7 +65,7 @@ function MainCarpoolPage({ onLogout }) {
     } finally {
       setLoading(false);
     }
-  }, [navigate]);
+  }, [navigate, pickupLocation, dropoffLocation, travelDate, filters]);
 
   useEffect(() => {
     const fetchUserInfo = async () => {
@@ -290,22 +302,6 @@ function MainCarpoolPage({ onLogout }) {
                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                      <div>
                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                         Max Distance (miles)
-                       </label>
-                       <input
-                         type="range"
-                         name="maxDistance"
-                         min="1"
-                         max="100"
-                         value={filters.maxDistance}
-                         onChange={handleFilterChange}
-                         className="w-full"
-                       />
-                       <div className="text-sm text-gray-500 text-right">{filters.maxDistance} miles</div>
-                     </div>
-                     
-                     <div>
-                       <label className="block text-sm font-medium text-gray-700 mb-2">
                          Minimum Available Seats
                        </label>
                        <input
@@ -347,6 +343,16 @@ function MainCarpoolPage({ onLogout }) {
                    </div>
                  </div>
                )}
+               
+               {/* Search Button */}
+               <div className="mt-4">
+                 <button
+                   onClick={fetchCarpools}
+                   className="w-full px-4 py-2 bg-[#E9C46A] text-white rounded-lg hover:bg-[#F4A261] transition duration-200"
+                 >
+                   Search Carpools
+                 </button>
+               </div>
              </div>
 
             {/* Scrollable List Area - Fixed height container */}
