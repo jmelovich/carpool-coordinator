@@ -1689,14 +1689,31 @@ def get_route_information(carpool: Dict, filters: Dict) -> Dict:
             date_obj = datetime.strptime(travel_date, "%Y-%m-%d")
             
             if carpool['route']['leave_earliest']:
-                time_obj = datetime.strptime(carpool['route']['leave_earliest'], "%H:%M")
+                # Check if the time contains a semicolon (which indicates a combined date-time format)
+                if ';' in carpool['route']['leave_earliest']:
+                    # This is a combined date-time format like "04-17-2025;10:49"
+                    # Extract just the time portion and parse it
+                    time_part = carpool['route']['leave_earliest'].split(';')[1]
+                    time_obj = datetime.strptime(time_part, "%H:%M")
+                else:
+                    # Standard time format
+                    time_obj = datetime.strptime(carpool['route']['leave_earliest'], "%H:%M")
+                
                 driver_earliest_departure = datetime.combine(
                     date_obj.date(), 
                     time_obj.time()
                 )
             
             if carpool['route']['arrive_by']:
-                time_obj = datetime.strptime(carpool['route']['arrive_by'], "%H:%M")
+                # Check if the time contains a semicolon
+                if ';' in carpool['route']['arrive_by']:
+                    # Combined date-time format
+                    time_part = carpool['route']['arrive_by'].split(';')[1]
+                    time_obj = datetime.strptime(time_part, "%H:%M")
+                else:
+                    # Standard time format
+                    time_obj = datetime.strptime(carpool['route']['arrive_by'], "%H:%M")
+                
                 driver_latest_arrival = datetime.combine(
                     date_obj.date(), 
                     time_obj.time()
@@ -1823,36 +1840,101 @@ def get_route_information(carpool: Dict, filters: Dict) -> Dict:
     duration_detour = total_duration - original_duration
     
     # Analyze the route to determine pickup and dropoff times
-    # This is a simplified approach - in reality we'd need a more sophisticated algorithm
-    # to determine which leg corresponds to the new user's pickup and dropoff
+    # The previous approach didn't work correctly, so let's implement a better one
+    # We need a more robust approach that doesn't rely on waypoint indices
     
-    # For this simplified implementation, assume pickup is halfway through the route and
-    # dropoff is 3/4 through the route (just for demonstration)
-    half_duration = total_duration_seconds / 2
-    three_quarter_duration = (total_duration_seconds * 3) / 4
+    # Since Google Maps API doesn't directly tell us which legs correspond to which waypoints,
+    # we need to implement a better estimation algorithm
     
-    cumulative_time = 0
-    pickup_time = driver_earliest_departure
-    dropoff_time = driver_earliest_departure
+    # Calculate the user's position in the overall journey
+    # Assuming this is a sequential journey: origin -> waypoints -> destination
+    # We need to analyze the actual locations and their distances
     
-    for leg in new_legs:
-        leg_duration = leg['duration']['value']
+    try:
+        # For more accurate calculation, let's use Google Distance Matrix API to calculate
+        # the actual distance from origin to user's pickup and from origin to user's dropoff
+        origin_to_pickup = gmaps.distance_matrix(
+            carpool_origin, 
+            pickup_location, 
+            mode="driving",
+            departure_time=driver_earliest_departure
+        )
         
-        if cumulative_time < half_duration and cumulative_time + leg_duration >= half_duration:
-            # This leg contains the pickup point
-            progress_through_leg = (half_duration - cumulative_time) / leg_duration
-            pickup_time = driver_earliest_departure + timedelta(
-                seconds=cumulative_time + progress_through_leg * leg_duration
-            )
+        # Instead of calculating origin to dropoff directly, calculate pickup to dropoff
+        # This ensures proper sequencing: origin -> pickup -> dropoff -> destination
+        pickup_to_dropoff = gmaps.distance_matrix(
+            pickup_location, 
+            dropoff_location, 
+            mode="driving",
+            departure_time=driver_earliest_departure
+        )
         
-        if cumulative_time < three_quarter_duration and cumulative_time + leg_duration >= three_quarter_duration:
-            # This leg contains the dropoff point
-            progress_through_leg = (three_quarter_duration - cumulative_time) / leg_duration
-            dropoff_time = driver_earliest_departure + timedelta(
-                seconds=cumulative_time + progress_through_leg * leg_duration
-            )
+        # Extract the time it takes to go from origin to pickup location
+        pickup_time_seconds = origin_to_pickup['rows'][0]['elements'][0]['duration']['value']
+        
+        # Extract the time it takes to go from pickup to dropoff location
+        pickup_to_dropoff_seconds = pickup_to_dropoff['rows'][0]['elements'][0]['duration']['value']
+        
+        # Dropoff time is pickup time plus travel time from pickup to dropoff
+        dropoff_time_seconds = pickup_time_seconds + pickup_to_dropoff_seconds
+        
+        # Calculate the actual times
+        pickup_time = driver_earliest_departure + timedelta(seconds=pickup_time_seconds)
+        dropoff_time = driver_earliest_departure + timedelta(seconds=dropoff_time_seconds)
+        
+        # If pickup time is after dropoff time, that's an error in our algorithm
+        # In this case, fall back to a reasoned approach
+        if pickup_time >= dropoff_time:
+            raise ValueError("Pickup time calculation error")
             
-        cumulative_time += leg_duration
+    except Exception as e:
+        print(f"Error calculating precise pickup/dropoff times: {e}")
+        # Fall back to a better estimation method
+        # Instead of using thirds, let's calculate based on the actual proportion of the journey
+        
+        # Get distances from origin to each point and from each point to destination
+        try:
+            # Calculate distance from origin to pickup
+            origin_to_pickup_dist = gmaps.distance_matrix(
+                carpool_origin, 
+                pickup_location, 
+                mode="driving"
+            )['rows'][0]['elements'][0]['distance']['value']
+            
+            # Calculate distance from pickup to dropoff
+            pickup_to_dropoff_dist = gmaps.distance_matrix(
+                pickup_location, 
+                dropoff_location, 
+                mode="driving"
+            )['rows'][0]['elements'][0]['distance']['value']
+            
+            # Calculate distance from origin to destination (direct)
+            origin_to_dest_dist = gmaps.distance_matrix(
+                carpool_origin, 
+                carpool_destination, 
+                mode="driving"
+            )['rows'][0]['elements'][0]['distance']['value']
+            
+            # Calculate proportions of the journey
+            pickup_proportion = origin_to_pickup_dist / origin_to_dest_dist
+            dropoff_proportion = (origin_to_pickup_dist + pickup_to_dropoff_dist) / origin_to_dest_dist
+            
+            # Limit proportions to valid range
+            pickup_proportion = max(0.1, min(0.9, pickup_proportion))
+            dropoff_proportion = max(pickup_proportion + 0.1, min(0.95, dropoff_proportion))
+            
+            # Calculate times based on these proportions
+            pickup_time_seconds = total_duration_seconds * pickup_proportion
+            dropoff_time_seconds = total_duration_seconds * dropoff_proportion
+            
+        except Exception as e:
+            print(f"Error calculating distance-based proportions: {e}")
+            # If all fails, use a more reasonable default
+            pickup_time_seconds = total_duration_seconds * 0.25  # 25% of the way
+            dropoff_time_seconds = total_duration_seconds * 0.75  # 75% of the way
+        
+        pickup_time = driver_earliest_departure + timedelta(seconds=pickup_time_seconds)
+        dropoff_time = driver_earliest_departure + timedelta(seconds=dropoff_time_seconds)
     
     # Calculate estimated arrival time at carpool destination with detour
     estimated_arrival = driver_earliest_departure + timedelta(seconds=total_duration_seconds)
@@ -1905,6 +1987,46 @@ def get_route_information(carpool: Dict, filters: Dict) -> Dict:
         'passenger_count': len(carpool.get('passengers', [])),  # Number of existing passengers
         'total_stops': len(new_waypoints)  # Total number of stops in the route
     }
+    
+    # Check if the pickup and dropoff times are compatible with the user's time constraints
+    # from the filters
+    if filters.get('earliest_pickup') and pickup_time:
+        try:
+            # Parse the earliest pickup time from the filter
+            earliest_pickup_str = filters.get('earliest_pickup')
+            if ':' in earliest_pickup_str:
+                if travel_date:
+                    date_obj = datetime.strptime(travel_date, "%Y-%m-%d")
+                    time_obj = datetime.strptime(earliest_pickup_str, "%H:%M")
+                    earliest_pickup = datetime.combine(date_obj.date(), time_obj.time())
+                    
+                    # Check if the estimated pickup time is before the user's earliest acceptable time
+                    if pickup_time < earliest_pickup:
+                        is_viable = False
+                        viability_issues.append(f"Pickup time {pickup_time.strftime('%H:%M')} is before your earliest acceptable time {earliest_pickup_str}")
+                        route_info['is_viable'] = is_viable
+                        route_info['viability_issues'] = viability_issues
+        except ValueError as e:
+            print(f"Error parsing earliest pickup time: {e}")
+    
+    if filters.get('latest_arrival') and dropoff_time:
+        try:
+            # Parse the latest arrival time from the filter
+            latest_arrival_str = filters.get('latest_arrival')
+            if ':' in latest_arrival_str:
+                if travel_date:
+                    date_obj = datetime.strptime(travel_date, "%Y-%m-%d")
+                    time_obj = datetime.strptime(latest_arrival_str, "%H:%M")
+                    latest_arrival = datetime.combine(date_obj.date(), time_obj.time())
+                    
+                    # Check if the estimated dropoff time is after the user's latest acceptable time
+                    if dropoff_time > latest_arrival:
+                        is_viable = False
+                        viability_issues.append(f"Dropoff time {dropoff_time.strftime('%H:%M')} is after your latest acceptable time {latest_arrival_str}")
+                        route_info['is_viable'] = is_viable
+                        route_info['viability_issues'] = viability_issues
+        except ValueError as e:
+            print(f"Error parsing latest arrival time: {e}")
     
     
     return route_info

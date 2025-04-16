@@ -377,48 +377,48 @@ function MainCarpoolPage({ onLogout }) {
                       // Default to keeping original order
                       return 0;
                     }).map(carpool => (
-                      <div key={carpool.carpool_id} className="p-4 hover:bg-gray-50 transition duration-150">
-                        <div className="flex flex-col md:flex-row md:justify-between md:items-start">
+                      <div 
+                        key={carpool.carpool_id} 
+                        className={`mb-3 mx-2 p-3 rounded-lg shadow-sm border transition duration-150 ${
+                          carpool.route_info?.is_viable 
+                            ? 'bg-green-50 border-green-200 hover:bg-green-100' 
+                            : 'bg-white border-gray-200 hover:bg-gray-50'
+                        }`}
+                      >
+                        <div className="flex flex-col md:flex-row md:justify-between md:items-start gap-3">
                           <div className="flex-1">
-                            <h3 className="font-semibold text-lg text-[#264653]">
-                              {carpool.driver.full_name || carpool.driver.username}
-                            </h3>
-                            
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-2">
-                              <div>
-                                <p className="text-sm text-gray-600">
-                                  <span className="font-medium">From:</span> {carpool.route.origin}
-                                </p>
-                                <p className="text-sm text-gray-600">
-                                  <span className="font-medium">To:</span> {carpool.route.destination}
-                                </p>
-                              </div>
-                              
-                              <div>
-                                <p className="text-sm text-gray-600">
-                                  <span className="font-medium">Departure:</span> {carpool.route.leave_earliest}
-                                </p>
-                                <p className="text-sm text-gray-600">
-                                  <span className="font-medium">Arrival:</span> {carpool.route.arrive_by}
-                                </p>
-                              </div>
+                            <div className="flex items-center justify-between mb-2">
+                              <h3 className="font-semibold text-lg text-[#264653]">
+                                {carpool.driver.full_name || carpool.driver.username}
+                              </h3>
+                              <span className="inline-flex items-center px-2 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-800">
+                                {carpool.capacity.current}/{carpool.capacity.max} passengers
+                              </span>
                             </div>
                             
-                            <div className="mt-2">
-                              <p className="text-sm text-gray-600">
-                                <span className="font-medium">Vehicle:</span> {carpool.vehicle.full_description || 'Not specified'}
+                            <div className="grid grid-cols-2 gap-x-4 gap-y-1 mb-2">
+                              <p className="text-sm text-gray-600 truncate">
+                                <span className="font-medium">From:</span> {carpool.route.origin}
+                              </p>
+                              <p className="text-sm text-gray-600 truncate">
+                                <span className="font-medium">To:</span> {carpool.route.destination}
                               </p>
                               <p className="text-sm text-gray-600">
-                                <span className="font-medium">Capacity:</span> {carpool.capacity.current}/{carpool.capacity.max} passengers
+                                <span className="font-medium">Departure:</span> {carpool.route.leave_earliest}
+                              </p>
+                              <p className="text-sm text-gray-600">
+                                <span className="font-medium">Arrival:</span> {carpool.route.arrive_by}
                               </p>
                             </div>
+                            
+                            <p className="text-sm text-gray-600 mb-2">
+                              <span className="font-medium">Vehicle:</span> {carpool.vehicle.full_description || 'Not specified'}
+                            </p>
                             
                             {/* Route Information */}
                             {carpool.route_info && (
-                              <div className="mt-3 bg-gray-50 p-3 rounded-lg border border-gray-200">
-                                <h4 className="font-medium text-[#264653] mb-2">Route Information</h4>
-                                
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-2">
+                              <div className="mt-2 bg-gray-50 p-2 rounded border border-gray-200 text-sm">
+                                <div className="grid grid-cols-2 gap-x-3 gap-y-1">
                                   <div>
                                     <p className="text-sm text-gray-600">
                                       <span className="font-medium">Est. Pickup:</span> {carpool.route_info.pickup_time}
@@ -480,10 +480,10 @@ function MainCarpoolPage({ onLogout }) {
                             )}
                           </div>
                           
-                          <div className="mt-4 md:mt-0 md:ml-4">
+                          <div className="md:ml-4 flex-shrink-0">
                             <button
                               onClick={() => handleJoinCarpool(carpool.carpool_id)}
-                              className={`w-full md:w-auto px-4 py-2 rounded-lg transition duration-200 ${
+                              className={`w-full px-4 py-2 rounded-lg transition duration-200 ${
                                 carpool.capacity.current >= carpool.capacity.max || (carpool.route_info && !carpool.route_info.is_viable)
                                   ? 'bg-gray-300 text-gray-600 cursor-not-allowed' 
                                   : 'bg-blue-500 text-white hover:bg-blue-600'
