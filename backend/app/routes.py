@@ -6,7 +6,7 @@ from app.database import (
     get_quiz_by_id, save_quiz_results, get_specific_user_data, init_app, _substitute_context,
     reserve_carpool_listing_id, get_full_carpool_details, get_public_carpool_details,
     check_user_missing_info, get_options_from_universal_id, get_user_full_profile, delete_car,
-    get_carpool_list
+    get_carpool_list, add_passenger_to_carpool
 )
 from flask_jwt_extended import (
     JWTManager, jwt_required, create_access_token, get_jwt_identity
@@ -531,6 +531,62 @@ def get_carpools():
         'success': True,
         'carpools': carpools
     })
+
+@app.route('/api/carpool/join', methods=['POST'])
+@jwt_required()
+def join_carpool():
+    """Join an existing carpool as a passenger"""
+    # Get current user ID from JWT token
+    current_user_id = int(get_jwt_identity())
+    
+    # Get data from request body
+    data = request.get_json()
+    if not data or 'carpool_id' not in data:
+        return jsonify({
+            'success': False,
+            'error': 'missing_data',
+            'message': 'Carpool ID is required'
+        }), 400
+    
+    # Extract data from request
+    carpool_id = data.get('carpool_id')
+    pickup_location = data.get('pickup_location')
+    dropoff_location = data.get('dropoff_location')
+    
+    # Build filters from request data
+    filters = {}
+    
+    # Include pickup and dropoff locations in filters
+    if pickup_location:
+        filters['pickup_location'] = pickup_location
+    
+    if dropoff_location:
+        filters['dropoff_location'] = dropoff_location
+    
+    # Include travel date if provided
+    if 'travel_date' in data:
+        filters['travel_date'] = data.get('travel_date')
+    
+    # Include time constraints if provided
+    if 'earliest_pickup' in data:
+        filters['earliest_pickup'] = data.get('earliest_pickup')
+    
+    if 'latest_arrival' in data:
+        filters['latest_arrival'] = data.get('latest_arrival')
+    
+    # Add the passenger to the carpool
+    result = add_passenger_to_carpool(
+        carpool_id=carpool_id,
+        passenger_id=current_user_id,
+        pickup_location=pickup_location,
+        dropoff_location=dropoff_location,
+        filters=filters
+    )
+    
+    if result['success']:
+        return jsonify(result), 200
+    else:
+        return jsonify(result), 400
     
 
 

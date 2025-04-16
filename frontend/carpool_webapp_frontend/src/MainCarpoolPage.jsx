@@ -190,11 +190,67 @@ function MainCarpoolPage({ onLogout }) {
     }));
   };
   
-  const handleJoinCarpool = (carpoolId) => {
-    // This function will be implemented later to handle joining a carpool
-    console.log(`Attempting to join carpool ${carpoolId}`);
-    // For now, just show an alert
-    alert(`Join functionality will be implemented soon for carpool ${carpoolId}`);
+  const handleJoinCarpool = async (carpoolId) => {
+    // Don't attempt to join if button is disabled
+    const carpool = carpools.find(c => c.carpool_id === carpoolId);
+    if (!carpool || 
+        carpool.capacity.current >= carpool.capacity.max || 
+        (carpool.route_info && !carpool.route_info.is_viable)) {
+      return;
+    }
+    
+    try {
+      setError(''); // Clear any previous errors
+      
+      // Get the access token from cookies
+      const accessToken = Cookies.get('access_token');
+      if (!accessToken) {
+        navigate('/');
+        return;
+      }
+      
+      // Prepare the request data - include filter data
+      const requestData = {
+        carpool_id: carpoolId,
+        pickup_location: pickupLocation,
+        dropoff_location: dropoffLocation,
+        travel_date: travelDate,
+        earliest_pickup: filters.earliestPickupTime,
+        latest_arrival: filters.latestArrival
+      };
+      
+      // Make the API call to join the carpool
+      const response = await fetch('http://127.0.0.1:5000/api/carpool/join', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestData),
+      });
+      
+      const data = await response.json();
+      
+      if (!response.ok) {
+        // Show error message
+        setError(data.message || 'Failed to join carpool');
+        return;
+      }
+      
+      // On success, update the local carpool list with the updated carpool
+      const updatedCarpools = carpools.map(c => 
+        c.carpool_id === carpoolId ? data.carpool : c
+      );
+      
+      setCarpools(updatedCarpools);
+      
+      // Show success message
+      alert('Successfully joined the carpool!');
+      
+    } catch (error) {
+      console.error('Error joining carpool:', error);
+      setError('Failed to join carpool. Please try again.');
+    }
   };
 
   return (

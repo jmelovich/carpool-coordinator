@@ -370,59 +370,306 @@ def reserve_carpool_listing_id(driver_id: int) -> Optional[int]:
         print(f"Error creating carpool listing for driver ID {driver_id}: {e}")
         return None # Rely on close_db teardown to rollback
 
-def get_carpool_listing(carpool_id: int, user_id: int = None) -> Optional[Dict]:
-    """Get a carpool listing with the given ID.
+def get_carpool_listing(carpool_id: int, filters: Dict = None) -> Optional[Dict]:
+    """
+    Get detailed information about a specific carpool listing.
     
     Args:
-        carpool_id: The ID of the carpool listing
-        user_id: Optional user ID to verify ownership (if provided)
-        
+        carpool_id: ID of the carpool to retrieve
+        filters: Optional filters for route calculation
+            
     Returns:
-        Dictionary with carpool details or None if not found or not authorized
+        Dictionary containing carpool details or None if not found
     """
-    conn = get_db()
+    db = get_db()
     try:
-        cursor = execute_with_retry(
-            conn,
-            '''
+        # Get the carpool from the database
+        query = '''
             SELECT 
-                carpool_id, driver_id, route_origin, route_destination, 
-                arrive_by, leave_earliest, carpool_capacity, 
-                misc_data, created_at
-            FROM carpool_list 
-            WHERE carpool_id = ?
-            ''',
-            (carpool_id,)
-        )
+                cl.carpool_id, cl.driver_id, cl.route_origin, cl.route_destination, 
+                cl.arrive_by, cl.leave_earliest, cl.carpool_capacity, cl.misc_data,
+                cl.created_at, cl.vehicle_license_plate,
+                u.username as driver_username,
+                ui.given_name, ui.surname,
+                ci.make, ci.model, ci.year, ci.max_capacity, ci.license_plate
+            FROM carpool_list cl
+            JOIN users u ON cl.driver_id = u.id
+            LEFT JOIN user_info ui ON cl.driver_id = ui.user_id
+            LEFT JOIN car_info ci ON cl.vehicle_license_plate = ci.license_plate
+            WHERE cl.carpool_id = ?
+              AND cl.route_origin IS NOT NULL 
+              AND cl.route_destination IS NOT NULL
+              AND cl.route_origin != ''
+              AND cl.route_destination != ''
+        '''
         
-        carpool = cursor.fetchone()
-        if not carpool:
+        row = db.execute(query, (carpool_id,)).fetchone()
+        
+        if not row:
             return None
             
-        # Convert to dict for easier handling
-        carpool_dict = dict(carpool)
+        # Get passenger information for this carpool
+        passengers_query = '''
+            SELECT 
+                cp.passenger_id, cp.pickup_location, cp.pickup_time, 
+                cp.dropoff_location, cp.dropoff_time, cp.misc_data,
+                u.username, ui.given_name, ui.surname
+            FROM carpool_passengers cp
+            JOIN users u ON cp.passenger_id = u.id
+            LEFT JOIN user_info ui ON cp.passenger_id = ui.user_id
+            WHERE cp.carpool_id = ?
+        '''
+        passengers = []
+        passenger_rows = db.execute(passengers_query, (carpool_id,)).fetchall()
         
-        # Verify ownership if user_id provided
-        if user_id is not None and carpool_dict['driver_id'] != user_id:
-            return None  # Not authorized
+        for passenger_row in passenger_rows:
+            passenger_dict = dict(passenger_row)
             
-        # Process misc_data if it exists
-        if carpool_dict['misc_data']:
+            # Process any JSON misc_data for passenger
+            if passenger_dict.get('misc_data'):
+                try:
+                    misc_data = json.loads(passenger_dict['misc_data'])
+                    passenger_dict.update(misc_data)
+                    passenger_dict.pop('misc_data', None)
+                except json.JSONDecodeError:
+                    pass
+            
+            # Format full name
+            passenger_dict['full_name'] = f"{passenger_dict.get('given_name', '')} {passenger_dict.get('surname', '')}".strip()
+            if not passenger_dict['full_name']:
+                passenger_dict['full_name'] = passenger_dict['username']
+            
+            passengers.append(passenger_dict)
+        
+        # Get total passenger count
+        passenger_count = len(passengers)
+        
+        # Parse any JSON data stored in misc_data
+        misc_data = {}
+        if row['misc_data']:
             try:
-                misc_data = json.loads(carpool_dict['misc_data'])
-                driver_id = carpool_dict.pop('driver_id', None)
-                # Merge the misc_data into the main dict
-                carpool_dict.update(misc_data)
+                misc_data = json.loads(row['misc_data'])
             except json.JSONDecodeError:
-                # If JSON is invalid, keep the raw string
-                pass
-        else:
-            driver_id = carpool_dict.pop('driver_id', None)
+                misc_data = {}
+        
+        carpool = {
+            'carpool_id': row['carpool_id'],
+            'driver': {
+                'id': row['driver_id'],
+                'username': row['driver_username'],
+                'given_name': row['given_name'] or '',
+                'surname': row['surname'] or '',
+                'full_name': f"{row['given_name'] or ''} {row['surname'] or ''}".strip()
+            },
+            'route': {
+                'origin': row['route_origin'],
+                'destination': row['route_destination'],
+                'arrive_by': row['arrive_by'],
+                'leave_earliest': row['leave_earliest']
+            },
+            'vehicle': {
+                'make': row['make'] or '',
+                'model': row['model'] or '',
+                'year': row['year'] or '',
+                'license_plate': row['license_plate'] or '',
+                'full_description': f"{row['year'] or ''} {row['make'] or ''} {row['model'] or ''}".strip()
+            },
+            'capacity': {
+                'max': row['max_capacity'] or row['carpool_capacity'] or 0,
+                'current': passenger_count
+            },
+            'passengers': passengers,
+            'created_at': row['created_at'],
+            'misc_data': misc_data
+        }
+        
+        # Add route information if filters are provided
+        if filters and (filters.get('pickup_location') or filters.get('dropoff_location')):
+            route_info = get_route_information(carpool, filters)
+            if route_info:
+                carpool['route_info'] = route_info
+        
+        return carpool
             
-        return carpool_dict
     except sqlite3.Error as e:
-        print(f"Error getting carpool listing {carpool_id}: {e}")
+        print(f"Error getting carpool listing: {e}")
         return None
+
+def get_carpool_list(filters: Dict = None) -> List[Dict]:
+    """
+    Get available carpools with driver and car details based on optional filters.
+    Excludes incomplete carpool listings (those without origin or destination).
+    
+    Args:
+        filters: Optional dictionary containing filter criteria
+            - pickup_location: User's pickup location
+            - dropoff_location: User's dropoff location
+            - travel_date: Date of travel
+            - min_seats: Minimum available seats
+            - earliest_pickup: Earliest pickup time
+            - latest_arrival: Latest arrival time
+            
+    Returns:
+        List of carpools with driver, car, and passenger information that match filters
+    """
+    db = get_db()
+    try:
+        # Get all carpools from the carpool_list table
+        query = '''
+            SELECT carpool_id
+            FROM carpool_list
+            WHERE route_origin IS NOT NULL 
+              AND route_destination IS NOT NULL
+              AND route_origin != ''
+              AND route_destination != ''
+        '''
+        
+        # Apply additional filters if provided
+        params = []
+        if filters:
+            # Filter by minimum available seats
+            if 'min_seats' in filters and filters['min_seats']:
+                # In a real implementation, we'd join with passengers and calculate dynamically
+                # For simplicity in this MVP, we'll filter after fetching
+                pass
+            
+            # Filter by earliest pickup time and latest arrival is handled in route_info calculation
+        
+        # Execute the query
+        carpool_ids = db.execute(query, params).fetchall()
+        
+        carpools = []
+        for row in carpool_ids:
+            carpool_id = row['carpool_id']
+            carpool = get_carpool_listing(carpool_id, filters)
+            
+            if carpool:
+                # Apply min_seats filter if provided
+                if filters and 'min_seats' in filters and filters['min_seats']:
+                    min_seats = int(filters['min_seats'])
+                    carpool_capacity = carpool['capacity']['max']
+                    current_passengers = carpool['capacity']['current']
+                    
+                    if (carpool_capacity - current_passengers) < min_seats:
+                        # Skip this carpool if it doesn't have enough available seats
+                        continue
+                
+                carpools.append(carpool)
+        
+        return carpools
+            
+    except sqlite3.Error as e:
+        print(f"Error getting carpool list: {e}")
+        return []
+
+def add_passenger_to_carpool(carpool_id: int, passenger_id: int, pickup_location: str, 
+                            dropoff_location: str, filters: Dict = None) -> Dict:
+    """
+    Add a passenger to a carpool.
+    
+    Args:
+        carpool_id: ID of the carpool
+        passenger_id: ID of the user joining as passenger
+        pickup_location: Passenger's pickup location
+        dropoff_location: Passenger's dropoff location
+        filters: Additional filter data for calculating route information
+        
+    Returns:
+        Dictionary containing result information:
+            - success: Boolean indicating if operation was successful
+            - message: Descriptive message
+            - carpool: Updated carpool information if successful
+            - error: Error message if unsuccessful
+    """
+    db = get_db()
+    
+    try:
+        # First check if the carpool exists and has available capacity
+        carpool = get_carpool_listing(carpool_id, filters)
+        
+        if not carpool:
+            return {
+                'success': False,
+                'error': 'Carpool not found',
+                'message': 'The specified carpool does not exist.'
+            }
+        
+        # Check if the passenger is already in this carpool
+        check_query = "SELECT passenger_id FROM carpool_passengers WHERE carpool_id = ? AND passenger_id = ?"
+        existing = db.execute(check_query, (carpool_id, passenger_id)).fetchone()
+        
+        if existing:
+            return {
+                'success': False,
+                'error': 'already_joined',
+                'message': 'You are already a passenger in this carpool.'
+            }
+        
+        # Check if the passenger is the driver
+        if carpool['driver']['id'] == passenger_id:
+            return {
+                'success': False,
+                'error': 'driver_join_attempt',
+                'message': 'You cannot join your own carpool as a passenger.'
+            }
+        
+        # Check available capacity
+        if carpool['capacity']['current'] >= carpool['capacity']['max']:
+            return {
+                'success': False,
+                'error': 'carpool_full',
+                'message': 'This carpool is already at full capacity.'
+            }
+        
+        # Check route viability if route_info is available
+        if 'route_info' in carpool and not carpool['route_info'].get('is_viable', True):
+            return {
+                'success': False,
+                'error': 'route_not_viable',
+                'message': 'This carpool route is not viable for your requirements.',
+                'issues': carpool['route_info'].get('viability_issues', [])
+            }
+        
+        # Extract timing information from route_info if available
+        pickup_time = None
+        dropoff_time = None
+        
+        if 'route_info' in carpool:
+            pickup_time = carpool['route_info'].get('pickup_time')
+            dropoff_time = carpool['route_info'].get('dropoff_time')
+        
+        # Add the passenger to the carpool
+        insert_query = """
+            INSERT INTO carpool_passengers (
+                carpool_id, passenger_id, pickup_location, dropoff_location, 
+                pickup_time, dropoff_time
+            ) VALUES (?, ?, ?, ?, ?, ?)
+        """
+        
+        db.execute(insert_query, (
+            carpool_id, passenger_id, pickup_location, dropoff_location,
+            pickup_time, dropoff_time
+        ))
+        
+        db.commit()
+        
+        # Get the updated carpool information
+        updated_carpool = get_carpool_listing(carpool_id, filters)
+        
+        return {
+            'success': True,
+            'message': 'Successfully joined the carpool.',
+            'carpool': updated_carpool
+        }
+        
+    except sqlite3.Error as e:
+        db.rollback()
+        print(f"Error adding passenger to carpool: {e}")
+        return {
+            'success': False,
+            'error': 'database_error',
+            'message': f'An error occurred while joining the carpool: {str(e)}'
+        }
 
 def get_passenger_details(carpool_id: int) -> List[Dict]:
     """Get all passengers for a carpool listing.
@@ -1957,14 +2204,14 @@ def get_route_information(carpool: Dict, filters: Dict) -> Dict:
                     f"Would conflict with {constraint['name']}'s latest arrival time of {constraint['latest_arrival'].strftime('%H:%M')}"
                 )
     
-    # If detour is too large, mark as not viable
-    if duration_detour > 30:  # More than 30 minutes detour
-        is_viable = False
-        viability_issues.append(f"Detour time of {duration_detour:.1f} minutes is too long")
+    # # If detour is too large, mark as not viable
+    # if duration_detour > 30:  # More than 30 minutes detour
+    #     is_viable = False
+    #     viability_issues.append(f"Detour time of {duration_detour:.1f} minutes is too long")
     
-    if distance_detour > 15:  # More than 15 miles detour
-        is_viable = False
-        viability_issues.append(f"Detour distance of {distance_detour:.1f} miles is too far")
+    # if distance_detour > 15:  # More than 15 miles detour
+    #     is_viable = False
+    #     viability_issues.append(f"Detour distance of {distance_detour:.1f} miles is too far")
     
     # Prepare the route information to return
     route_info = {
@@ -2030,167 +2277,6 @@ def get_route_information(carpool: Dict, filters: Dict) -> Dict:
     
     
     return route_info
-
-def get_carpool_list(filters: Dict = None) -> List[Dict]:
-    """
-    Get available carpools with driver and car details based on optional filters.
-    Excludes incomplete carpool listings (those without origin or destination).
-    
-    Args:
-        filters: Optional dictionary containing filter criteria
-            - pickup_location: User's pickup location
-            - dropoff_location: User's dropoff location
-            - travel_date: Date of travel
-            - min_seats: Minimum available seats
-            - earliest_pickup: Earliest pickup time
-            - latest_arrival: Latest arrival time
-            
-    Returns:
-        List of carpools with driver, car, and passenger information that match filters
-    """
-    db = get_db()
-    try:
-        # Get all carpools from the carpool_list table
-        query = '''
-            SELECT 
-                cl.carpool_id, cl.driver_id, cl.route_origin, cl.route_destination, 
-                cl.arrive_by, cl.leave_earliest, cl.carpool_capacity, cl.misc_data,
-                cl.created_at,
-                u.username as driver_username,
-                ui.given_name, ui.surname,
-                ci.make, ci.model, ci.year, ci.max_capacity, ci.license_plate
-            FROM carpool_list cl
-            JOIN users u ON cl.driver_id = u.id
-            LEFT JOIN user_info ui ON cl.driver_id = ui.user_id
-            LEFT JOIN car_info ci ON cl.vehicle_license_plate = ci.license_plate
-            WHERE cl.route_origin IS NOT NULL 
-              AND cl.route_destination IS NOT NULL
-              AND cl.route_origin != ''
-              AND cl.route_destination != ''
-        '''
-        
-        # Apply additional filters if provided
-        params = []
-        if filters:
-            # Filter by pickup location, dropoff location, and travel date would be handled
-            # by the get_route_information function for each carpool
-            pickup_location = filters.get('pickup_location')
-            dropoff_location = filters.get('dropoff_location')
-            travel_date = filters.get('travel_date')
-            
-            # Filter by minimum available seats
-            if 'min_seats' in filters and filters['min_seats']:
-                min_seats = filters['min_seats']
-                # This is a placeholder - in a real implementation we'd need to join with passengers
-                # and calculate available seats dynamically
-            
-            # Filter by earliest pickup time
-            if 'earliest_pickup' in filters and filters['earliest_pickup']:
-                # Time comparison would depend on how time is stored (string format)
-                pass
-                
-            # Filter by latest arrival time
-            if 'latest_arrival' in filters and filters['latest_arrival']:
-                # Time comparison would depend on how time is stored (string format)
-                pass
-        
-        # Execute the query
-        carpool_rows = db.execute(query, params).fetchall()
-
-        carpools = []
-        for row in carpool_rows:
-            carpool_id = row['carpool_id']
-            
-            # Get passenger information for this carpool (names, pickup/dropoff locations, time constraints)
-            passengers_query = '''
-                SELECT 
-                    cp.passenger_id, cp.pickup_location, cp.pickup_time, 
-                    cp.dropoff_location, cp.dropoff_time, cp.misc_data,
-                    u.username, ui.given_name, ui.surname
-                FROM carpool_passengers cp
-                JOIN users u ON cp.passenger_id = u.id
-                LEFT JOIN user_info ui ON cp.passenger_id = ui.user_id
-                WHERE cp.carpool_id = ?
-            '''
-            passengers = []
-            passenger_rows = db.execute(passengers_query, (carpool_id,)).fetchall()
-            
-            for passenger_row in passenger_rows:
-                passenger_dict = dict(passenger_row)
-                
-                # Process any JSON misc_data for passenger
-                if passenger_dict.get('misc_data'):
-                    try:
-                        misc_data = json.loads(passenger_dict['misc_data'])
-                        passenger_dict.update(misc_data)
-                        passenger_dict.pop('misc_data', None)
-                    except json.JSONDecodeError:
-                        pass
-                
-                # Format full name
-                passenger_dict['full_name'] = f"{passenger_dict.get('given_name', '')} {passenger_dict.get('surname', '')}".strip()
-                if not passenger_dict['full_name']:
-                    passenger_dict['full_name'] = passenger_dict['username']
-                
-                passengers.append(passenger_dict)
-            
-            # Get total passenger count
-            passenger_count = len(passengers)
-            
-            # Parse any JSON data stored in misc_data
-            misc_data = {}
-            if row['misc_data']:
-                try:
-                    misc_data = json.loads(row['misc_data'])
-                except json.JSONDecodeError:
-                    misc_data = {}
-            
-            carpool = {
-                'carpool_id': row['carpool_id'],
-                'driver': {
-                    'id': row['driver_id'],
-                    'username': row['driver_username'],
-                    'given_name': row['given_name'] or '',
-                    'surname': row['surname'] or '',
-                    'full_name': f"{row['given_name'] or ''} {row['surname'] or ''}".strip()
-                },
-                'route': {
-                    'origin': row['route_origin'],
-                    'destination': row['route_destination'],
-                    'arrive_by': row['arrive_by'],
-                    'leave_earliest': row['leave_earliest']
-                },
-                'vehicle': {
-                    'make': row['make'] or '',
-                    'model': row['model'] or '',
-                    'year': row['year'] or '',
-                    'license_plate': row['license_plate'] or '',
-                    'full_description': f"{row['year'] or ''} {row['make'] or ''} {row['model'] or ''}".strip()
-                },
-                'capacity': {
-                    'max': row['max_capacity'] or row['carpool_capacity'] or 0,
-                    'current': passenger_count
-                },
-                'passengers': passengers,  # Add detailed passenger information
-                'created_at': row['created_at'],
-                'misc_data': misc_data
-            }
-            
-            # Get route information if user provided pickup/dropoff locations
-            if filters and (filters.get('pickup_location') or filters.get('dropoff_location')):
-                route_info = get_route_information(carpool, filters)
-                if route_info:
-                    print(route_info)
-
-                    carpool['route_info'] = route_info
-            
-            carpools.append(carpool)
-        
-        return carpools
-            
-    except sqlite3.Error as e:
-        print(f"Error getting carpool list: {e}")
-        return []
 
 # Setup Google Maps client
 def get_gmaps_client():
