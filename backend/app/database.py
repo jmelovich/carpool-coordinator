@@ -2,6 +2,16 @@
 
 import sqlite3
 from pathlib import Path
+import googlemaps
+from datetime import datetime, timedelta
+import os
+import json
+from typing import Optional, Dict, List, Tuple, Any
+import re
+import time
+import random
+import click # For Flask CLI commands
+from flask.cli import with_appcontext
 
 try:
     from flask_bcrypt import generate_password_hash
@@ -11,15 +21,6 @@ except ImportError:
     def generate_password_hash(pwd): return f"hashed_{pwd}".encode('utf-8')
 
 from flask import current_app, g # Import Flask g and current_app
-from typing import Optional, Dict, List, Tuple, Any
-from datetime import datetime
-import json
-import os
-import re
-import time
-import random
-import click # For Flask CLI commands
-from flask.cli import with_appcontext
 
 # --- Configuration ---
 # Best practice: Define DATABASE path in Flask app config.
@@ -1641,7 +1642,7 @@ def get_route_information(carpool: Dict, filters: Dict) -> Dict:
     time, and other route-related factors.
     
     Args:
-        carpool: Dictionary containing carpool information
+        carpool: Dictionary containing carpool information including driver and passenger details
         filters: Dictionary containing filter criteria including:
             - pickup_location: User's pickup location
             - dropoff_location: User's dropoff location
@@ -1657,34 +1658,254 @@ def get_route_information(carpool: Dict, filters: Dict) -> Dict:
             - dropoff_time: Estimated dropoff time
             - is_viable: Whether this carpool is viable for the user
     """
-    # Just a placeholder implementation - in a real implementation,
-    # this would make calls to the Google Maps API or similar service
-    # to calculate route metrics
-    
     pickup_location = filters.get('pickup_location')
     dropoff_location = filters.get('dropoff_location')
     travel_date = filters.get('travel_date')
     
-    # For now, return a simple structure that would be populated with real data later
+    # If no pickup or dropoff location provided, return basic info
+    if not pickup_location or not dropoff_location:
+        return {
+            'pickup_location': pickup_location,
+            'dropoff_location': dropoff_location,
+            'travel_date': travel_date,
+            'is_viable': True  # Default to viable if no specific locations are provided
+        }
+    
+    # Get Google Maps client
+    gmaps = get_gmaps_client()
+    
+    # Get carpool origin and destination
+    carpool_origin = carpool['route']['origin']
+    carpool_destination = carpool['route']['destination']
+    
+    # Set departure and arrival times for driver
+    # Parse the time strings from the carpool
+    driver_earliest_departure = None
+    driver_latest_arrival = None
+    
+    if travel_date:
+        # If we have a travel date, combine it with the time
+        try:
+            date_obj = datetime.strptime(travel_date, "%Y-%m-%d")
+            
+            if carpool['route']['leave_earliest']:
+                time_obj = datetime.strptime(carpool['route']['leave_earliest'], "%H:%M")
+                driver_earliest_departure = datetime.combine(
+                    date_obj.date(), 
+                    time_obj.time()
+                )
+            
+            if carpool['route']['arrive_by']:
+                time_obj = datetime.strptime(carpool['route']['arrive_by'], "%H:%M")
+                driver_latest_arrival = datetime.combine(
+                    date_obj.date(), 
+                    time_obj.time()
+                )
+        except ValueError as e:
+            print(f"Error parsing driver dates: {e}")
+            # Use current time as fallback
+            driver_earliest_departure = datetime.now()
+    else:
+        # Use current time if no travel date specified
+        driver_earliest_departure = datetime.now()
+    
+    # Collect all passenger pickup/dropoff locations and time constraints
+    waypoints = []
+    time_constraints = []
+    
+    # Add driver constraints
+    time_constraints.append({
+        'name': carpool['driver']['full_name'],
+        'type': 'driver',
+        'earliest_departure': driver_earliest_departure,
+        'latest_arrival': driver_latest_arrival
+    })
+    
+    # Process existing passengers
+    for passenger in carpool.get('passengers', []):
+        p_pickup = passenger.get('pickup_location')
+        p_dropoff = passenger.get('dropoff_location')
+        
+        # Add existing pickup and dropoff points as waypoints
+        if p_pickup:
+            waypoints.append(p_pickup)
+        if p_dropoff:
+            waypoints.append(p_dropoff)
+        
+        # Process passenger time constraints
+        p_pickup_time = passenger.get('pickup_time')
+        p_dropoff_time = passenger.get('dropoff_time')
+        
+        p_earliest_departure = None
+        p_latest_arrival = None
+        
+        if travel_date and p_pickup_time:
+            try:
+                date_obj = datetime.strptime(travel_date, "%Y-%m-%d")
+                time_obj = datetime.strptime(p_pickup_time, "%H:%M")
+                p_earliest_departure = datetime.combine(date_obj.date(), time_obj.time())
+            except ValueError:
+                pass
+                
+        if travel_date and p_dropoff_time:
+            try:
+                date_obj = datetime.strptime(travel_date, "%Y-%m-%d")
+                time_obj = datetime.strptime(p_dropoff_time, "%H:%M")
+                p_latest_arrival = datetime.combine(date_obj.date(), time_obj.time())
+            except ValueError:
+                pass
+        
+        time_constraints.append({
+            'name': passenger.get('full_name', passenger.get('username', 'Unknown passenger')),
+            'type': 'passenger',
+            'earliest_departure': p_earliest_departure,
+            'latest_arrival': p_latest_arrival
+        })
+    
+    # Calculate direct route without the user (original carpool route with existing passengers)
+    original_route = calculate_route(
+        gmaps, 
+        carpool_origin, 
+        carpool_destination, 
+        waypoints=waypoints,
+        departure_time=driver_earliest_departure
+    )
+    
+    if not original_route:
+        return {
+            'pickup_location': pickup_location,
+            'dropoff_location': dropoff_location,
+            'travel_date': travel_date,
+            'error': 'Could not calculate original route',
+            'is_viable': False
+        }
+    
+    # Calculate original route metrics
+    original_legs = original_route.get('legs', [])
+    original_distance = sum(leg['distance']['value'] for leg in original_legs) / 1609.34  # Convert meters to miles
+    original_duration = sum(leg['duration']['value'] for leg in original_legs) / 60  # Convert seconds to minutes
+    
+    # Add new user's pickup and dropoff locations to waypoints
+    new_waypoints = waypoints.copy()
+    new_waypoints.append(pickup_location)
+    new_waypoints.append(dropoff_location)
+    
+    # Calculate route with user's pickup and dropoff
+    new_route = calculate_route(
+        gmaps,
+        carpool_origin,
+        carpool_destination,
+        waypoints=new_waypoints,
+        departure_time=driver_earliest_departure
+    )
+    
+    if not new_route:
+        return {
+            'pickup_location': pickup_location,
+            'dropoff_location': dropoff_location,
+            'travel_date': travel_date,
+            'error': 'Could not calculate route with pickup/dropoff locations',
+            'is_viable': False
+        }
+    
+    # Extract leg information
+    new_legs = new_route.get('legs', [])
+    
+    # Calculate total distance and duration for new route
+    total_distance_meters = sum(leg['distance']['value'] for leg in new_legs)
+    total_duration_seconds = sum(leg['duration']['value'] for leg in new_legs)
+    
+    total_distance = total_distance_meters / 1609.34  # Convert meters to miles
+    total_duration = total_duration_seconds / 60  # Convert seconds to minutes
+    
+    # Calculate detour information (how much the new route deviates from original)
+    distance_detour = total_distance - original_distance
+    duration_detour = total_duration - original_duration
+    
+    # Analyze the route to determine pickup and dropoff times
+    # This is a simplified approach - in reality we'd need a more sophisticated algorithm
+    # to determine which leg corresponds to the new user's pickup and dropoff
+    
+    # For this simplified implementation, assume pickup is halfway through the route and
+    # dropoff is 3/4 through the route (just for demonstration)
+    half_duration = total_duration_seconds / 2
+    three_quarter_duration = (total_duration_seconds * 3) / 4
+    
+    cumulative_time = 0
+    pickup_time = driver_earliest_departure
+    dropoff_time = driver_earliest_departure
+    
+    for leg in new_legs:
+        leg_duration = leg['duration']['value']
+        
+        if cumulative_time < half_duration and cumulative_time + leg_duration >= half_duration:
+            # This leg contains the pickup point
+            progress_through_leg = (half_duration - cumulative_time) / leg_duration
+            pickup_time = driver_earliest_departure + timedelta(
+                seconds=cumulative_time + progress_through_leg * leg_duration
+            )
+        
+        if cumulative_time < three_quarter_duration and cumulative_time + leg_duration >= three_quarter_duration:
+            # This leg contains the dropoff point
+            progress_through_leg = (three_quarter_duration - cumulative_time) / leg_duration
+            dropoff_time = driver_earliest_departure + timedelta(
+                seconds=cumulative_time + progress_through_leg * leg_duration
+            )
+            
+        cumulative_time += leg_duration
+    
+    # Calculate estimated arrival time at carpool destination with detour
+    estimated_arrival = driver_earliest_departure + timedelta(seconds=total_duration_seconds)
+    
+    # Check if this would exceed any time constraints
+    is_viable = True
+    viability_issues = []
+    
+    # Check driver's latest arrival constraint
+    if driver_latest_arrival and estimated_arrival > driver_latest_arrival:
+        is_viable = False
+        viability_issues.append(f"Would arrive after driver's latest arrival time of {driver_latest_arrival.strftime('%H:%M')}")
+    
+    # Check passenger time constraints
+    for constraint in time_constraints:
+        if constraint['type'] == 'passenger' and constraint['latest_arrival']:
+            if constraint['latest_arrival'] < dropoff_time:
+                is_viable = False
+                viability_issues.append(
+                    f"Would conflict with {constraint['name']}'s latest arrival time of {constraint['latest_arrival'].strftime('%H:%M')}"
+                )
+    
+    # If detour is too large, mark as not viable
+    if duration_detour > 30:  # More than 30 minutes detour
+        is_viable = False
+        viability_issues.append(f"Detour time of {duration_detour:.1f} minutes is too long")
+    
+    if distance_detour > 15:  # More than 15 miles detour
+        is_viable = False
+        viability_issues.append(f"Detour distance of {distance_detour:.1f} miles is too far")
+    
+    # Prepare the route information to return
     route_info = {
         'pickup_location': pickup_location,
         'dropoff_location': dropoff_location,
         'travel_date': travel_date,
-        'pickup_distance': 0,  # Distance in miles from user pickup to carpool origin
-        'dropoff_distance': 0,  # Distance in miles from carpool destination to user dropoff
-        'total_distance': 0,    # Total route distance in miles
-        'total_duration': 0,    # Total route duration in minutes
-        'pickup_time': None,    # Estimated pickup time
-        'dropoff_time': None,   # Estimated dropoff time
-        'is_viable': True       # Whether this carpool is viable for the user
+        'pickup_distance': round(distance_detour / 2, 1),  # Rough estimate of pickup distance
+        'dropoff_distance': round(distance_detour / 2, 1),  # Rough estimate of dropoff distance
+        'total_distance': round(total_distance, 1),  # Total route distance in miles
+        'original_distance': round(original_distance, 1),  # Original carpool route distance in miles
+        'distance_detour': round(distance_detour, 1),  # Extra distance added by the detour in miles
+        'total_duration': round(total_duration, 1),  # Total route duration in minutes
+        'original_duration': round(original_duration, 1),  # Original carpool route duration in minutes
+        'duration_detour': round(duration_detour, 1),  # Extra time added by the detour in minutes
+        'pickup_time': pickup_time.strftime("%H:%M"),  # Estimated pickup time
+        'dropoff_time': dropoff_time.strftime("%H:%M"),  # Estimated dropoff time
+        'estimated_arrival': estimated_arrival.strftime("%H:%M"),  # Estimated arrival time at final destination
+        'is_viable': is_viable,  # Whether this carpool is viable for the user
+        'viability_issues': viability_issues if not is_viable else [],  # Reasons for not being viable
+        'passenger_count': len(carpool.get('passengers', [])),  # Number of existing passengers
+        'total_stops': len(new_waypoints)  # Total number of stops in the route
     }
     
-    # In a real implementation, we would:
-    # 1. Use the google maps API to create a route with the existing driver's & passenger's pickup and dropoff locations
-    # 2. Then add the user's pickup and dropoff locations to the route
-    # 3. Determine if the carpool can accommodate these detours (based on driver's & other passenger's set earliest pickup and latest arrival times)
-    # 4. Calculate estimated pickup and dropoff times with the new route (if viable)
-    # 5. Set is_viable based on whether the carpool can accommodate the user
     
     return route_info
 
@@ -1758,12 +1979,41 @@ def get_carpool_list(filters: Dict = None) -> List[Dict]:
         for row in carpool_rows:
             carpool_id = row['carpool_id']
             
-            # Get passenger count for this carpool
-            passenger_count = db.execute('''
-                SELECT COUNT(*) as count
-                FROM carpool_passengers
-                WHERE carpool_id = ?
-            ''', (carpool_id,)).fetchone()['count']
+            # Get passenger information for this carpool (names, pickup/dropoff locations, time constraints)
+            passengers_query = '''
+                SELECT 
+                    cp.passenger_id, cp.pickup_location, cp.pickup_time, 
+                    cp.dropoff_location, cp.dropoff_time, cp.misc_data,
+                    u.username, ui.given_name, ui.surname
+                FROM carpool_passengers cp
+                JOIN users u ON cp.passenger_id = u.id
+                LEFT JOIN user_info ui ON cp.passenger_id = ui.user_id
+                WHERE cp.carpool_id = ?
+            '''
+            passengers = []
+            passenger_rows = db.execute(passengers_query, (carpool_id,)).fetchall()
+            
+            for passenger_row in passenger_rows:
+                passenger_dict = dict(passenger_row)
+                
+                # Process any JSON misc_data for passenger
+                if passenger_dict.get('misc_data'):
+                    try:
+                        misc_data = json.loads(passenger_dict['misc_data'])
+                        passenger_dict.update(misc_data)
+                        passenger_dict.pop('misc_data', None)
+                    except json.JSONDecodeError:
+                        pass
+                
+                # Format full name
+                passenger_dict['full_name'] = f"{passenger_dict.get('given_name', '')} {passenger_dict.get('surname', '')}".strip()
+                if not passenger_dict['full_name']:
+                    passenger_dict['full_name'] = passenger_dict['username']
+                
+                passengers.append(passenger_dict)
+            
+            # Get total passenger count
+            passenger_count = len(passengers)
             
             # Parse any JSON data stored in misc_data
             misc_data = {}
@@ -1799,6 +2049,7 @@ def get_carpool_list(filters: Dict = None) -> List[Dict]:
                     'max': row['max_capacity'] or row['carpool_capacity'] or 0,
                     'current': passenger_count
                 },
+                'passengers': passengers,  # Add detailed passenger information
                 'created_at': row['created_at'],
                 'misc_data': misc_data
             }
@@ -1807,6 +2058,8 @@ def get_carpool_list(filters: Dict = None) -> List[Dict]:
             if filters and (filters.get('pickup_location') or filters.get('dropoff_location')):
                 route_info = get_route_information(carpool, filters)
                 if route_info:
+                    print(route_info)
+
                     carpool['route_info'] = route_info
             
             carpools.append(carpool)
@@ -1816,4 +2069,49 @@ def get_carpool_list(filters: Dict = None) -> List[Dict]:
     except sqlite3.Error as e:
         print(f"Error getting carpool list: {e}")
         return []
+
+# Setup Google Maps client
+def get_gmaps_client():
+    """Get a Google Maps client instance with API key"""
+    api_key = current_app.config.get('GOOGLE_MAPS_API_KEY')
+    if not api_key:
+        raise ValueError("Google Maps API key not configured")
+    return googlemaps.Client(key=api_key)
+
+def calculate_route(gmaps, origin, destination, waypoints=None, departure_time=None):
+    """
+    Calculate a route between origin and destination, with optional waypoints
+    
+    Args:
+        gmaps: Google Maps client instance
+        origin: Origin address or coordinates
+        destination: Destination address or coordinates
+        waypoints: List of waypoints to include in the route
+        departure_time: Departure time for the route
+        
+    Returns:
+        Route information including distance, duration, steps
+    """
+    try:
+        # Set departure time to now if not specified
+        if departure_time is None:
+            departure_time = datetime.now()
+        
+        # Make directions API call
+        directions_result = gmaps.directions(
+            origin,
+            destination,
+            mode="driving",
+            waypoints=waypoints,
+            optimize_waypoints=True,
+            departure_time=departure_time
+        )
+        
+        if not directions_result:
+            return None
+        
+        return directions_result[0]
+    except Exception as e:
+        print(f"Error calculating route: {e}")
+        return None
 

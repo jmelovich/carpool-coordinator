@@ -108,10 +108,10 @@ function MainCarpoolPage({ onLogout }) {
 
     fetchUserInfo();
     
-    // Set up interval to refresh carpools every 15 seconds
+    // Set up interval to refresh carpools every 60 seconds
     const intervalId = setInterval(() => {
       fetchCarpools();
-    }, 15000);
+    }, 60000);
     
     // Clean up interval on component unmount
     return () => clearInterval(intervalId);
@@ -368,7 +368,15 @@ function MainCarpoolPage({ onLogout }) {
                   </div>
                 ) : (
                   <div className="divide-y divide-gray-200">
-                    {carpools.map(carpool => (
+                    {/* Sort carpools to display viable ones first */}
+                    {[...carpools].sort((a, b) => {
+                      // If a has route_info and is viable but b doesn't or isn't, a comes first
+                      if (a.route_info?.is_viable && (!b.route_info || !b.route_info.is_viable)) return -1;
+                      // If b has route_info and is viable but a doesn't or isn't, b comes first
+                      if (b.route_info?.is_viable && (!a.route_info || !a.route_info.is_viable)) return 1;
+                      // Default to keeping original order
+                      return 0;
+                    }).map(carpool => (
                       <div key={carpool.carpool_id} className="p-4 hover:bg-gray-50 transition duration-150">
                         <div className="flex flex-col md:flex-row md:justify-between md:items-start">
                           <div className="flex-1">
@@ -404,19 +412,89 @@ function MainCarpoolPage({ onLogout }) {
                                 <span className="font-medium">Capacity:</span> {carpool.capacity.current}/{carpool.capacity.max} passengers
                               </p>
                             </div>
+                            
+                            {/* Route Information */}
+                            {carpool.route_info && (
+                              <div className="mt-3 bg-gray-50 p-3 rounded-lg border border-gray-200">
+                                <h4 className="font-medium text-[#264653] mb-2">Route Information</h4>
+                                
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-2">
+                                  <div>
+                                    <p className="text-sm text-gray-600">
+                                      <span className="font-medium">Est. Pickup:</span> {carpool.route_info.pickup_time}
+                                    </p>
+                                    <p className="text-sm text-gray-600">
+                                      <span className="font-medium">Est. Dropoff:</span> {carpool.route_info.dropoff_time}
+                                    </p>
+                                  </div>
+                                  
+                                  <div>
+                                    <p className="text-sm text-gray-600">
+                                      <span className="font-medium">Distance:</span> {carpool.route_info.total_distance} mi 
+                                      <span className="text-xs text-gray-500 ml-1">
+                                        (original: {carpool.route_info.original_distance} mi)
+                                      </span>
+                                    </p>
+                                    <p className="text-sm text-gray-600">
+                                      <span className="font-medium">Duration:</span> {carpool.route_info.total_duration} min 
+                                      <span className="text-xs text-gray-500 ml-1">
+                                        (original: {carpool.route_info.original_duration} min)
+                                      </span>
+                                    </p>
+                                  </div>
+                                  
+                                  <div>
+                                    <p className="text-sm text-gray-600">
+                                      <span className="font-medium">Detour:</span> +{carpool.route_info.distance_detour} mi / +{carpool.route_info.duration_detour} min
+                                    </p>
+                                    <p className="text-sm text-gray-600">
+                                      <span className="font-medium">Total Stops:</span> {carpool.route_info.total_stops || (carpool.capacity.current + 2)}
+                                    </p>
+                                  </div>
+                                  
+                                  {/* Viability status */}
+                                  <div>
+                                    {carpool.route_info.is_viable ? (
+                                      <p className="text-sm text-green-600 font-medium">
+                                        ✓ This carpool is a good match for you
+                                      </p>
+                                    ) : (
+                                      <div>
+                                        <p className="text-sm text-red-600 font-medium">
+                                          ✗ This carpool might not work for you
+                                        </p>
+                                        {carpool.route_info.viability_issues && carpool.route_info.viability_issues.length > 0 && (
+                                          <div className="mt-1">
+                                            <ul className="text-xs text-red-500 list-disc ml-4">
+                                              {carpool.route_info.viability_issues.map((issue, index) => (
+                                                <li key={index}>{issue}</li>
+                                              ))}
+                                            </ul>
+                                          </div>
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            )}
                           </div>
                           
                           <div className="mt-4 md:mt-0 md:ml-4">
                             <button
                               onClick={() => handleJoinCarpool(carpool.carpool_id)}
                               className={`w-full md:w-auto px-4 py-2 rounded-lg transition duration-200 ${
-                                carpool.capacity.current >= carpool.capacity.max 
+                                carpool.capacity.current >= carpool.capacity.max || (carpool.route_info && !carpool.route_info.is_viable)
                                   ? 'bg-gray-300 text-gray-600 cursor-not-allowed' 
                                   : 'bg-blue-500 text-white hover:bg-blue-600'
                               }`}
-                              disabled={carpool.capacity.current >= carpool.capacity.max}
+                              disabled={carpool.capacity.current >= carpool.capacity.max || (carpool.route_info && !carpool.route_info.is_viable)}
                             >
-                              {carpool.capacity.current >= carpool.capacity.max ? 'Full' : 'Attempt To Join'}
+                              {carpool.capacity.current >= carpool.capacity.max 
+                                ? 'Full' 
+                                : (carpool.route_info && !carpool.route_info.is_viable) 
+                                  ? 'Not Compatible' 
+                                  : 'Attempt To Join'}
                             </button>
                           </div>
                         </div>
