@@ -504,7 +504,7 @@ def get_carpool_list(filters: Dict = None) -> List[Dict]:
         filters: Optional dictionary containing filter criteria
             - pickup_location: User's pickup location
             - dropoff_location: User's dropoff location
-            - travel_date: Date of travel
+            - arrival_date: Date of arrival at destination
             - min_seats: Minimum available seats
             - earliest_pickup: Earliest pickup time
             - latest_arrival: Latest arrival time
@@ -567,9 +567,9 @@ def get_carpool_list(filters: Dict = None) -> List[Dict]:
                             arrive_datetime = datetime.strptime(f"{date_part} {time_part}", "%m-%d-%Y %H:%M")
                         else:
                             # If only time is provided, we need the travel date
-                            if 'travel_date' in filters and filters['travel_date']:
-                                travel_date = filters['travel_date']
-                                arrive_datetime = datetime.strptime(f"{travel_date} {arrive_by}", "%Y-%m-%d %H:%M")
+                            if 'arrival_date' in filters and filters['arrival_date']:
+                                arrival_date = filters['arrival_date']
+                                arrive_datetime = datetime.strptime(f"{arrival_date} {arrive_by}", "%Y-%m-%d %H:%M")
                             else:
                                 # If no travel date, assume today
                                 today = datetime.now().strftime("%Y-%m-%d")
@@ -717,9 +717,11 @@ def get_passenger_details(carpool_id: int) -> List[Dict]:
                 cp.carpool_id, cp.passenger_id, cp.pickup_location, 
                 cp.pickup_time, cp.dropoff_location, cp.dropoff_time, 
                 cp.misc_data,
-                u.username as passenger_name
+                u.username as passenger_name,
+                ui.given_name || ' ' || ui.surname as full_name
             FROM carpool_passengers cp
             JOIN users u ON cp.passenger_id = u.id
+            JOIN user_info ui ON cp.passenger_id = ui.user_id
             WHERE cp.carpool_id = ?
             ''',
             (carpool_id,)
@@ -1909,7 +1911,7 @@ def delete_car(driver_id: int, license_plate: str) -> bool:
         print(f"Error deleting car {license_plate} for driver {driver_id}: {e}")
         return False
 
-def get_route_information(carpool: Dict, filters: Dict) -> Dict:
+def get_route_information(carpool: Dict, filters: Dict = None) -> Dict:
     """
     Calculate route information between user's pickup/dropoff locations and the carpool's route.
     This will be used to determine if a carpool is a good match for the user based on distance,
@@ -1917,10 +1919,10 @@ def get_route_information(carpool: Dict, filters: Dict) -> Dict:
     
     Args:
         carpool: Dictionary containing carpool information including driver and passenger details
-        filters: Dictionary containing filter criteria including:
+        filters: Optional dictionary containing filter criteria including:
             - pickup_location: User's pickup location
             - dropoff_location: User's dropoff location
-            - travel_date: Date of travel
+            - arrival_date: Date of arrival at destination
             
     Returns:
         Dictionary containing route information:
@@ -1930,23 +1932,22 @@ def get_route_information(carpool: Dict, filters: Dict) -> Dict:
             - total_duration: Total duration of the route in minutes
             - pickup_time: Estimated pickup time
             - dropoff_time: Estimated dropoff time
-            - is_viable: Whether this carpool is viable for the user
+            - is_viable: Whether this carpool is viable for the user (only if filters provided)
     """
+    filters = filters or {}
     pickup_location = filters.get('pickup_location')
     dropoff_location = filters.get('dropoff_location')
-    travel_date = filters.get('travel_date')
+    arrival_date = filters.get('arrival_date')
     
-    # If no pickup or dropoff location provided, return basic info
-    if not pickup_location or not dropoff_location:
+    # If no pickup or dropoff location provided and filters were expected, return basic info
+    if filters and (not pickup_location or not dropoff_location):
         return {
             'pickup_location': pickup_location,
             'dropoff_location': dropoff_location,
-            'travel_date': travel_date,
+            'arrival_date': arrival_date,
             'is_viable': True  # Default to viable if no specific locations are provided
         }
         
-    
-    
     # Get Google Maps client
     gmaps = get_gmaps_client()
     
@@ -1959,10 +1960,10 @@ def get_route_information(carpool: Dict, filters: Dict) -> Dict:
     driver_earliest_departure = None
     driver_latest_arrival = None
     
-    if travel_date:
-        # If we have a travel date, combine it with the time
+    if arrival_date:
+        # If we have an arrival date, combine it with the time
         try:
-            date_obj = datetime.strptime(travel_date, "%Y-%m-%d")
+            date_obj = datetime.strptime(arrival_date, "%Y-%m-%d")
             
             if carpool['route']['leave_earliest']:
                 # Check if the time contains a semicolon (which indicates a combined date-time format)
@@ -2001,6 +2002,11 @@ def get_route_information(carpool: Dict, filters: Dict) -> Dict:
     else:
         # Use current time if no travel date specified
         driver_earliest_departure = datetime.now()
+        
+    # If driver_earliest_departure is in the past, set it to now
+    if driver_earliest_departure and driver_earliest_departure < datetime.now():
+        print(f"Adjusting driver departure time from {driver_earliest_departure} to now as it was in the past")
+        driver_earliest_departure = datetime.now()
     
     # Collect all passenger pickup/dropoff locations and time constraints
     waypoints = []
@@ -2032,17 +2038,17 @@ def get_route_information(carpool: Dict, filters: Dict) -> Dict:
         p_earliest_departure = None
         p_latest_arrival = None
         
-        if travel_date and p_pickup_time:
+        if arrival_date and p_pickup_time:
             try:
-                date_obj = datetime.strptime(travel_date, "%Y-%m-%d")
+                date_obj = datetime.strptime(arrival_date, "%Y-%m-%d")
                 time_obj = datetime.strptime(p_pickup_time, "%H:%M")
                 p_earliest_departure = datetime.combine(date_obj.date(), time_obj.time())
             except ValueError:
                 pass
                 
-        if travel_date and p_dropoff_time:
+        if arrival_date and p_dropoff_time:
             try:
-                date_obj = datetime.strptime(travel_date, "%Y-%m-%d")
+                date_obj = datetime.strptime(arrival_date, "%Y-%m-%d")
                 time_obj = datetime.strptime(p_dropoff_time, "%H:%M")
                 p_latest_arrival = datetime.combine(date_obj.date(), time_obj.time())
             except ValueError:
@@ -2065,18 +2071,35 @@ def get_route_information(carpool: Dict, filters: Dict) -> Dict:
     )
     
     if not original_route:
-        return {
-            'pickup_location': pickup_location,
-            'dropoff_location': dropoff_location,
-            'travel_date': travel_date,
+        result = {
             'error': 'Could not calculate original route',
-            'is_viable': False
         }
+        if filters:
+            result.update({
+                'pickup_location': pickup_location,
+                'dropoff_location': dropoff_location,
+                'arrival_date': arrival_date,
+                'is_viable': False
+            })
+        return result
     
     # Calculate original route metrics
     original_legs = original_route.get('legs', [])
     original_distance = sum(leg['distance']['value'] for leg in original_legs) / 1609.34  # Convert meters to miles
     original_duration = sum(leg['duration']['value'] for leg in original_legs) / 60  # Convert seconds to minutes
+    
+    # If no filters provided, calculate basic route information without user pickup/dropoff
+    if not filters or (not pickup_location and not dropoff_location):
+        # Prepare the route information to return
+        route_info = {
+            'total_distance': round(original_distance, 1),  # Total route distance in miles
+            'total_duration': round(original_duration, 1),  # Total route duration in minutes
+            'new_departure_time': driver_earliest_departure.strftime("%H:%M"),  # New departure time
+            'estimated_arrival': (driver_earliest_departure + timedelta(minutes=original_duration)).strftime("%H:%M"),
+            'passenger_count': len(carpool.get('passengers', [])),  # Number of existing passengers
+            'total_stops': len(waypoints)  # Total number of stops in the route
+        }
+        return route_info
     
     # Add new user's pickup and dropoff locations to waypoints
     new_waypoints = waypoints.copy()
@@ -2093,13 +2116,17 @@ def get_route_information(carpool: Dict, filters: Dict) -> Dict:
     )
     
     if not new_route:
-        return {
-            'pickup_location': pickup_location,
-            'dropoff_location': dropoff_location,
-            'travel_date': travel_date,
+        result = {
             'error': 'Could not calculate route with pickup/dropoff locations',
-            'is_viable': False
         }
+        if filters:
+            result.update({
+                'pickup_location': pickup_location,
+                'dropoff_location': dropoff_location,
+                'arrival_date': arrival_date,
+                'is_viable': False
+            })
+        return result
     
     # Extract leg information
     new_legs = new_route.get('legs', [])
@@ -2215,38 +2242,11 @@ def get_route_information(carpool: Dict, filters: Dict) -> Dict:
     # Calculate estimated arrival time at carpool destination with detour
     estimated_arrival = driver_earliest_departure + timedelta(seconds=total_duration_seconds)
     
-    # Check if this would exceed any time constraints
-    is_viable = True
-    viability_issues = []
-    
-    # Check driver's latest arrival constraint
-    if driver_latest_arrival and estimated_arrival > driver_latest_arrival:
-        is_viable = False
-        viability_issues.append(f"Would arrive after driver's latest arrival time of {driver_latest_arrival.strftime('%H:%M')}")
-    
-    # Check passenger time constraints
-    for constraint in time_constraints:
-        if constraint['type'] == 'passenger' and constraint['latest_arrival']:
-            if constraint['latest_arrival'] < dropoff_time:
-                is_viable = False
-                viability_issues.append(
-                    f"Would conflict with {constraint['name']}'s latest arrival time of {constraint['latest_arrival'].strftime('%H:%M')}"
-                )
-    
-    # # If detour is too large, mark as not viable
-    # if duration_detour > 30:  # More than 30 minutes detour
-    #     is_viable = False
-    #     viability_issues.append(f"Detour time of {duration_detour:.1f} minutes is too long")
-    
-    # if distance_detour > 15:  # More than 15 miles detour
-    #     is_viable = False
-    #     viability_issues.append(f"Detour distance of {distance_detour:.1f} miles is too far")
-    
     # Prepare the route information to return
     route_info = {
         'pickup_location': pickup_location,
         'dropoff_location': dropoff_location,
-        'travel_date': travel_date,
+        'arrival_date': arrival_date,
         'pickup_distance': round(distance_detour / 2, 1),  # Rough estimate of pickup distance
         'dropoff_distance': round(distance_detour / 2, 1),  # Rough estimate of dropoff distance
         'total_distance': round(total_distance, 1),  # Total route distance in miles
@@ -2257,53 +2257,70 @@ def get_route_information(carpool: Dict, filters: Dict) -> Dict:
         'duration_detour': round(duration_detour, 1),  # Extra time added by the detour in minutes
         'pickup_time': pickup_time.strftime("%H:%M"),  # Estimated pickup time
         'dropoff_time': dropoff_time.strftime("%H:%M"),  # Estimated dropoff time
+        'new_departure_time': driver_earliest_departure.strftime("%H:%M"),  # New departure time
         'estimated_arrival': estimated_arrival.strftime("%H:%M"),  # Estimated arrival time at final destination
-        'is_viable': is_viable,  # Whether this carpool is viable for the user
-        'viability_issues': viability_issues if not is_viable else [],  # Reasons for not being viable
         'passenger_count': len(carpool.get('passengers', [])),  # Number of existing passengers
         'total_stops': len(new_waypoints)  # Total number of stops in the route
     }
     
-    # Check if the pickup and dropoff times are compatible with the user's time constraints
-    # from the filters
-    if filters.get('earliest_pickup') and pickup_time:
-        try:
-            # Parse the earliest pickup time from the filter
-            earliest_pickup_str = filters.get('earliest_pickup')
-            if ':' in earliest_pickup_str:
-                if travel_date:
-                    date_obj = datetime.strptime(travel_date, "%Y-%m-%d")
-                    time_obj = datetime.strptime(earliest_pickup_str, "%H:%M")
-                    earliest_pickup = datetime.combine(date_obj.date(), time_obj.time())
-                    
-                    # Check if the estimated pickup time is before the user's earliest acceptable time
-                    if pickup_time < earliest_pickup:
-                        is_viable = False
-                        viability_issues.append(f"Pickup time {pickup_time.strftime('%H:%M')} is before your earliest acceptable time {earliest_pickup_str}")
-                        route_info['is_viable'] = is_viable
-                        route_info['viability_issues'] = viability_issues
-        except ValueError as e:
-            print(f"Error parsing earliest pickup time: {e}")
-    
-    if filters.get('latest_arrival') and dropoff_time:
-        try:
-            # Parse the latest arrival time from the filter
-            latest_arrival_str = filters.get('latest_arrival')
-            if ':' in latest_arrival_str:
-                if travel_date:
-                    date_obj = datetime.strptime(travel_date, "%Y-%m-%d")
-                    time_obj = datetime.strptime(latest_arrival_str, "%H:%M")
-                    latest_arrival = datetime.combine(date_obj.date(), time_obj.time())
-                    
-                    # Check if the estimated dropoff time is after the user's latest acceptable time
-                    if dropoff_time > latest_arrival:
-                        is_viable = False
-                        viability_issues.append(f"Dropoff time {dropoff_time.strftime('%H:%M')} is after your latest acceptable time {latest_arrival_str}")
-                        route_info['is_viable'] = is_viable
-                        route_info['viability_issues'] = viability_issues
-        except ValueError as e:
-            print(f"Error parsing latest arrival time: {e}")
-    
+    # Only check viability if filters were provided
+    if filters:
+        # Check if this would exceed any time constraints
+        is_viable = True
+        viability_issues = []
+        
+        # Check driver's latest arrival constraint
+        if driver_latest_arrival and estimated_arrival > driver_latest_arrival:
+            is_viable = False
+            viability_issues.append(f"Would arrive after driver's latest arrival time of {driver_latest_arrival.strftime('%H:%M')}")
+        
+        # Check passenger time constraints
+        for constraint in time_constraints:
+            if constraint['type'] == 'passenger' and constraint['latest_arrival']:
+                if constraint['latest_arrival'] < dropoff_time:
+                    is_viable = False
+                    viability_issues.append(
+                        f"Would conflict with {constraint['name']}'s latest arrival time of {constraint['latest_arrival'].strftime('%H:%M')}"
+                    )
+        
+        # Check if the pickup and dropoff times are compatible with the user's time constraints
+        # from the filters
+        if filters.get('earliest_pickup') and pickup_time:
+            try:
+                # Parse the earliest pickup time from the filter
+                earliest_pickup_str = filters.get('earliest_pickup')
+                if ':' in earliest_pickup_str:
+                    if arrival_date:
+                        date_obj = datetime.strptime(arrival_date, "%Y-%m-%d")
+                        time_obj = datetime.strptime(earliest_pickup_str, "%H:%M")
+                        earliest_pickup = datetime.combine(date_obj.date(), time_obj.time())
+                        
+                        # Check if the estimated pickup time is before the user's earliest acceptable time
+                        if pickup_time < earliest_pickup:
+                            is_viable = False
+                            viability_issues.append(f"Pickup time {pickup_time.strftime('%H:%M')} is before your earliest acceptable time {earliest_pickup_str}")
+            except ValueError as e:
+                print(f"Error parsing earliest pickup time: {e}")
+        
+        if filters.get('latest_arrival') and dropoff_time:
+            try:
+                # Parse the latest arrival time from the filter
+                latest_arrival_str = filters.get('latest_arrival')
+                if ':' in latest_arrival_str:
+                    if arrival_date:
+                        date_obj = datetime.strptime(arrival_date, "%Y-%m-%d")
+                        time_obj = datetime.strptime(latest_arrival_str, "%H:%M")
+                        latest_arrival = datetime.combine(date_obj.date(), time_obj.time())
+                        
+                        # Check if the estimated dropoff time is after the user's latest acceptable time
+                        if dropoff_time > latest_arrival:
+                            is_viable = False
+                            viability_issues.append(f"Dropoff time {dropoff_time.strftime('%H:%M')} is after your latest acceptable time {latest_arrival_str}")
+            except ValueError as e:
+                print(f"Error parsing latest arrival time: {e}")
+        
+        route_info['is_viable'] = is_viable
+        route_info['viability_issues'] = viability_issues if not is_viable else []
     
     return route_info
 
@@ -2352,4 +2369,103 @@ def calculate_route(gmaps, origin, destination, waypoints=None, departure_time=N
     except Exception as e:
         print(f"Error calculating route: {e}")
         return None
+
+def remove_passenger_from_carpool(carpool_id: int, passenger_id: int) -> Dict:
+    """
+    Remove a passenger from a carpool.
+    
+    This can be called by either:
+    - The passenger themselves (leaving the carpool)
+    - The driver of the carpool (kicking the passenger)
+    
+    Args:
+        carpool_id: ID of the carpool
+        passenger_id: ID of the passenger to remove
+        
+    Returns:
+        Dictionary containing result information:
+            - success: Boolean indicating if operation was successful
+            - message: Descriptive message
+    """
+    db = get_db()
+    
+    try:
+        # First check if the passenger is actually in this carpool
+        check_query = "SELECT passenger_id FROM carpool_passengers WHERE carpool_id = ? AND passenger_id = ?"
+        existing = db.execute(check_query, (carpool_id, passenger_id)).fetchone()
+        
+        if not existing:
+            return {
+                'success': False,
+                'message': 'Passenger is not in this carpool'
+            }
+        
+        # Remove the passenger from the carpool
+        delete_query = "DELETE FROM carpool_passengers WHERE carpool_id = ? AND passenger_id = ?"
+        db.execute(delete_query, (carpool_id, passenger_id))
+        db.commit()
+        
+        return {
+            'success': True,
+            'message': 'Passenger removed from carpool successfully'
+        }
+        
+    except sqlite3.Error as e:
+        db.rollback()
+        print(f"Error removing passenger from carpool: {e}")
+        return {
+            'success': False,
+            'message': f'Database error: {str(e)}'
+        }
+
+def get_user_role_in_carpool(carpool_id: int, user_id: int) -> Dict:
+    """
+    Determine a user's role in a carpool (driver, passenger, or none).
+    
+    Args:
+        carpool_id: ID of the carpool
+        user_id: ID of the user
+        
+    Returns:
+        Dictionary containing role information:
+            - is_driver: Boolean indicating if user is the driver
+            - is_passenger: Boolean indicating if user is a passenger
+            - carpool_exists: Boolean indicating if the carpool exists
+    """
+    db = get_db()
+    
+    try:
+        # Check if carpool exists
+        carpool_query = "SELECT driver_id FROM carpool_list WHERE carpool_id = ?"
+        carpool = db.execute(carpool_query, (carpool_id,)).fetchone()
+        
+        if not carpool:
+            return {
+                'is_driver': False,
+                'is_passenger': False,
+                'carpool_exists': False
+            }
+        
+        # Check if user is the driver
+        is_driver = carpool['driver_id'] == user_id
+        
+        # Check if user is a passenger
+        passenger_query = "SELECT passenger_id FROM carpool_passengers WHERE carpool_id = ? AND passenger_id = ?"
+        passenger = db.execute(passenger_query, (carpool_id, user_id)).fetchone()
+        is_passenger = passenger is not None
+        
+        return {
+            'is_driver': is_driver,
+            'is_passenger': is_passenger,
+            'carpool_exists': True
+        }
+        
+    except sqlite3.Error as e:
+        print(f"Error checking user role in carpool: {e}")
+        return {
+            'is_driver': False,
+            'is_passenger': False,
+            'carpool_exists': False,
+            'error': str(e)
+        }
 

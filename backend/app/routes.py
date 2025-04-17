@@ -6,7 +6,7 @@ from app.database import (
     get_quiz_by_id, save_quiz_results, get_specific_user_data, init_app, _substitute_context,
     reserve_carpool_listing_id, get_full_carpool_details, get_public_carpool_details,
     check_user_missing_info, get_options_from_universal_id, get_user_full_profile, delete_car,
-    get_carpool_list, add_passenger_to_carpool
+    get_carpool_list, add_passenger_to_carpool, get_user_role_in_carpool, remove_passenger_from_carpool
 )
 from flask_jwt_extended import (
     JWTManager, jwt_required, create_access_token, get_jwt_identity
@@ -506,8 +506,8 @@ def get_carpools():
     if request.args.get('dropoff_location'):
         filters['dropoff_location'] = request.args.get('dropoff_location')
     
-    if request.args.get('travel_date'):
-        filters['travel_date'] = request.args.get('travel_date')
+    if request.args.get('arrival_date'):
+        filters['arrival_date'] = request.args.get('arrival_date')
     
     # If min seats specified
     if request.args.get('min_seats'):
@@ -564,8 +564,8 @@ def join_carpool():
         filters['dropoff_location'] = dropoff_location
     
     # Include travel date if provided
-    if 'travel_date' in data:
-        filters['travel_date'] = data.get('travel_date')
+    if 'arrival_date' in data:
+        filters['arrival_date'] = data.get('arrival_date')
     
     # Include time constraints if provided
     if 'earliest_pickup' in data:
@@ -587,6 +587,90 @@ def join_carpool():
         return jsonify(result), 200
     else:
         return jsonify(result), 400
+
+@app.route('/api/carpool/user-role', methods=['GET'])
+@jwt_required()
+def get_user_carpool_role():
+    """Get the current user's role in a specific carpool"""
+    # Get current user ID from JWT token
+    current_user_id = int(get_jwt_identity())
+    
+    # Get carpool_id from query parameters
+    carpool_id = request.args.get('carpool_id')
+    
+    if not carpool_id:
+        return jsonify({'error': 'Carpool ID is required'}), 400
+    
+    try:
+        carpool_id = int(carpool_id)
+    except ValueError:
+        return jsonify({'error': 'Invalid carpool ID format'}), 400
+    
+    # Get user's role in the carpool
+    role = get_user_role_in_carpool(carpool_id, current_user_id)
+    
+    if not role['carpool_exists']:
+        return jsonify({'error': 'Carpool not found'}), 404
+    
+    return jsonify({
+        'success': True,
+        'is_driver': role['is_driver'],
+        'is_passenger': role['is_passenger']
+    })
+
+@app.route('/api/carpool/remove-passenger', methods=['POST'])
+@jwt_required()
+def remove_passenger():
+    """Remove a passenger from a carpool (can be called by driver to kick or by passenger to leave)"""
+    # Get current user ID from JWT token
+    current_user_id = int(get_jwt_identity())
+    
+    # Get data from request body
+    data = request.get_json()
+    if not data or 'carpool_id' not in data:
+        return jsonify({'error': 'Carpool ID is required'}), 400
+    
+    try:
+        carpool_id = int(data['carpool_id'])
+    except ValueError:
+        return jsonify({'error': 'Invalid carpool ID format'}), 400
+    
+    # Get passenger ID from request or use current user if not specified
+    passenger_id = data.get('passenger_id', current_user_id)
+    try:
+        passenger_id = int(passenger_id)
+    except ValueError:
+        return jsonify({'error': 'Invalid passenger ID format'}), 400
+    
+    # Check if user has permission to remove this passenger
+    role = get_user_role_in_carpool(carpool_id, current_user_id)
+    
+    if not role['carpool_exists']:
+        return jsonify({'error': 'Carpool not found'}), 404
+    
+    # Allow removal only if:
+    # 1. User is removing themselves (leaving) OR
+    # 2. User is the driver (kicking someone else)
+    if passenger_id != current_user_id and not role['is_driver']:
+        return jsonify({'error': 'You do not have permission to remove this passenger'}), 403
+    
+    # Proceed with removing the passenger
+    result = remove_passenger_from_carpool(carpool_id, passenger_id)
+    
+    if not result['success']:
+        return jsonify({
+            'success': False,
+            'message': result['message']
+        }), 400
+    
+    # Get updated carpool information
+    carpool = get_full_carpool_details(carpool_id, current_user_id)
+    
+    return jsonify({
+        'success': True,
+        'message': result['message'],
+        'carpool': carpool
+    })
     
 
 

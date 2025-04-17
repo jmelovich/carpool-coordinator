@@ -10,7 +10,7 @@ function MainCarpoolPage({ onLogout }) {
   const [loading, setLoading] = useState(false);
   const [pickupLocation, setPickupLocation] = useState('');
   const [dropoffLocation, setDropoffLocation] = useState('');
-  const [travelDate, setTravelDate] = useState('');
+  const [arrivalDate, setArrivalDate] = useState('');
   const [filters, setFilters] = useState({
     earliestPickupTime: '',
     latestArrival: '',
@@ -26,7 +26,7 @@ function MainCarpoolPage({ onLogout }) {
   const areRequiredFieldsFilled = () => {
     return pickupLocation && 
            dropoffLocation && 
-           travelDate && 
+           arrivalDate && 
            filters.earliestPickupTime && 
            filters.latestArrival;
   };
@@ -52,7 +52,7 @@ function MainCarpoolPage({ onLogout }) {
       // Add filter parameters
       if (pickupLocation) url.searchParams.append('pickup_location', pickupLocation);
       if (dropoffLocation) url.searchParams.append('dropoff_location', dropoffLocation);
-      if (travelDate) url.searchParams.append('travel_date', travelDate);
+      if (arrivalDate) url.searchParams.append('arrival_date', arrivalDate);
       
       // Add other filters
       if (filters.earliestPickupTime) url.searchParams.append('earliest_pickup', filters.earliestPickupTime);
@@ -80,7 +80,7 @@ function MainCarpoolPage({ onLogout }) {
     } finally {
       setLoading(false);
     }
-  }, [navigate, pickupLocation, dropoffLocation, travelDate, filters]);
+  }, [navigate, pickupLocation, dropoffLocation, arrivalDate, filters]);
 
   useEffect(() => {
     const fetchUserInfo = async () => {
@@ -231,7 +231,7 @@ function MainCarpoolPage({ onLogout }) {
         carpool_id: carpoolId,
         pickup_location: pickupLocation,
         dropoff_location: dropoffLocation,
-        travel_date: travelDate,
+        arrival_date: arrivalDate,
         earliest_pickup: filters.earliestPickupTime,
         latest_arrival: filters.latestArrival
       };
@@ -268,6 +268,11 @@ function MainCarpoolPage({ onLogout }) {
       console.error('Error joining carpool:', error);
       setError('Failed to join carpool. Please try again.');
     }
+  };
+
+  // Handle view carpool listing
+  const handleViewListing = (carpoolId) => {
+    navigate(`/carpool-listing?carpool_id=${carpoolId}`);
   };
 
   // Helper function to format address from JSON string or object
@@ -378,12 +383,12 @@ function MainCarpoolPage({ onLogout }) {
                  {/* Date Selector */}
                  <div>
                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                     Travel Date <span className="text-red-500">*</span>
+                     Arrival Date <span className="text-red-500">*</span>
                    </label>
                    <input
                      type="date"
-                     value={travelDate}
-                     onChange={(e) => setTravelDate(e.target.value)}
+                     value={arrivalDate}
+                     onChange={(e) => setArrivalDate(e.target.value)}
                      min={today}
                      className="w-full p-2 border rounded bg-white"
                    />
@@ -499,7 +504,7 @@ function MainCarpoolPage({ onLogout }) {
                                 <span className="font-medium">To:</span> {formatAddress(carpool.route.destination)}
                               </p>
                               <p className="text-sm text-gray-600">
-                                <span className="font-medium">Departure:</span> {carpool.route.leave_earliest}
+                                <span className="font-medium">Departure:</span> {carpool.route_info.new_departure_time}
                               </p>
                               <p className="text-sm text-gray-600">
                                 <span className="font-medium">Arrival:</span> {carpool.route.arrive_by}
@@ -578,7 +583,7 @@ function MainCarpoolPage({ onLogout }) {
                           <div className="md:ml-4 flex-shrink-0">
                             <button
                               onClick={() => handleJoinCarpool(carpool.carpool_id)}
-                              className={`w-full px-4 py-2 rounded-lg transition duration-200 ${
+                              className={`w-full mb-2 px-4 py-2 rounded-lg transition duration-200 ${
                                 carpool.capacity.current >= carpool.capacity.max || (carpool.route_info && !carpool.route_info.is_viable)
                                   ? 'bg-gray-300 text-gray-600 cursor-not-allowed' 
                                   : 'bg-blue-500 text-white hover:bg-blue-600'
@@ -590,6 +595,12 @@ function MainCarpoolPage({ onLogout }) {
                                 : (carpool.route_info && !carpool.route_info.is_viable) 
                                   ? 'Not Compatible' 
                                   : 'Attempt To Join'}
+                            </button>
+                            <button
+                              onClick={() => handleViewListing(carpool.carpool_id)}
+                              className="w-full px-4 py-2 rounded-lg transition duration-200 bg-gray-500 text-white hover:bg-gray-600"
+                            >
+                              View Listing
                             </button>
                           </div>
                         </div>
