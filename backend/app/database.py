@@ -820,7 +820,7 @@ def get_full_carpool_details(carpool_id: int, user_id: int = None) -> Optional[D
         
         # Verify ownership if user_id provided
         if user_id is not None and driver_id != user_id:
-            return None  # Not authorized
+            return get_public_carpool_details(carpool_id)
     
         # Get the basic carpool listing without driver_id
         carpool = get_carpool_listing(carpool_id)
@@ -855,15 +855,22 @@ def get_public_passenger_details(carpool_id: int) -> List[Dict]:
     """
     conn = get_db()
     try:
-        # Only get passenger IDs and names
+        # Get passenger details with more fields to match the full listing format
         cursor = execute_with_retry(
             conn,
             '''
             SELECT 
                 cp.passenger_id,
-                u.username as passenger_name
+                u.username,
+                ui.given_name, 
+                ui.surname,
+                cp.pickup_location,
+                cp.dropoff_location,
+                cp.pickup_time,
+                cp.dropoff_time
             FROM carpool_passengers cp
             JOIN users u ON cp.passenger_id = u.id
+            LEFT JOIN user_info ui ON cp.passenger_id = ui.user_id
             WHERE cp.carpool_id = ?
             ''',
             (carpool_id,)
@@ -872,6 +879,18 @@ def get_public_passenger_details(carpool_id: int) -> List[Dict]:
         passengers = []
         for row in cursor.fetchall():
             passenger_dict = dict(row)
+            
+            # Format full name as in the full listing
+            given_name = passenger_dict.get('given_name', '')
+            surname = passenger_dict.get('surname', '')
+            username = passenger_dict.get('username', '')
+            
+            full_name = f"{given_name} {surname}".strip()
+            if not full_name:
+                full_name = username
+                
+            passenger_dict['full_name'] = full_name
+            
             passengers.append(passenger_dict)
             
         return passengers
@@ -909,44 +928,78 @@ def get_public_carpool_details(carpool_id: int) -> Optional[Dict]:
             return None
             
         # Convert to dict for easier handling
-        carpool = dict(carpool_row)
-        driver_id = carpool.pop('driver_id', None)
+        carpool_base = dict(carpool_row)
+        driver_id = carpool_base.pop('driver_id', None)
         
         # Get driver's username
         driver_cursor = execute_with_retry(
             conn,
-            'SELECT username FROM users WHERE id = ?',
+            'SELECT username, id FROM users WHERE id = ?',
             (driver_id,)
         )
         driver_row = driver_cursor.fetchone()
-        if driver_row:
-            carpool['driver_name'] = driver_row['username']
-            
+        
+        # Get driver info from user_info
+        driver_info_cursor = execute_with_retry(
+            conn,
+            'SELECT given_name, surname FROM user_info WHERE user_id = ?',
+            (driver_id,)
+        )
+        driver_info = driver_info_cursor.fetchone()
+        
         # Get limited passenger details
         passengers = get_public_passenger_details(carpool_id)
         
         # Add passengers to the carpool details
-        carpool['passengers'] = passengers
+        passenger_count = len(passengers) if passengers else 0
         
         # Get car info for the driver (excluding sensitive details)
-        cursor = execute_with_retry(
+        car_cursor = execute_with_retry(
             conn,
             '''
             SELECT 
-                make, model, year, max_capacity
+                make, model, year, max_capacity, license_plate
             FROM car_info 
             WHERE driver_id = ?
             ''',
             (driver_id,)
         )
         
-        car = cursor.fetchone()
-        if car:
-            car_dict = dict(car)
-            # Add car info to the carpool details
-            carpool['car_info'] = car_dict
-        else:
-            carpool['car_info'] = {}
+        car = car_cursor.fetchone()
+        car_info = dict(car) if car else {}
+        
+        # Structure the return data to match get_carpool_listing format
+        carpool = {
+            'carpool_id': carpool_base.get('carpool_id'),
+            'driver': {
+                'id': driver_id,
+                'username': driver_row['username'] if driver_row else '',
+                'given_name': driver_info['given_name'] if driver_info else '',
+                'surname': driver_info['surname'] if driver_info else '',
+                'full_name': f"{driver_info['given_name'] if driver_info and driver_info['given_name'] else ''} {driver_info['surname'] if driver_info and driver_info['surname'] else ''}".strip() if driver_info else ''
+            },
+            'route': {
+                'origin': carpool_base.get('route_origin', ''),
+                'destination': carpool_base.get('route_destination', ''),
+                'arrive_by': carpool_base.get('arrive_by', ''),
+                'leave_earliest': carpool_base.get('leave_earliest', '')
+            },
+            'vehicle': {
+                'make': car_info.get('make', ''),
+                'model': car_info.get('model', ''),
+                'year': car_info.get('year', ''),
+                'license_plate': car_info.get('license_plate', ''),
+                'full_description': f"{car_info.get('year', '')} {car_info.get('make', '')} {car_info.get('model', '')}".strip()
+            },
+            'capacity': {
+                'max': car_info.get('max_capacity', 0) or carpool_base.get('carpool_capacity', 0),
+                'current': passenger_count
+            },
+            'passengers': passengers,
+            'created_at': carpool_base.get('created_at', ''),
+            'misc_data': {},
+            'car_info': car_info
+        }
         
         return carpool
     except sqlite3.Error as e:

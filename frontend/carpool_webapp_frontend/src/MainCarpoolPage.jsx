@@ -4,6 +4,14 @@ import Cookies from 'js-cookie';
 import AddressInput from './components/AddressInput';
 
 function MainCarpoolPage({ onLogout }) {
+  // Get current time in HH:MM format for default earliest pickup time
+  const getCurrentTime = () => {
+    const now = new Date();
+    const hours = String(now.getHours()).padStart(2, '0');
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    return `${hours}:${minutes}`;
+  };
+
   const [username, setUsername] = useState('');
   const [error, setError] = useState('');
   const [carpools, setCarpools] = useState([]);
@@ -12,7 +20,7 @@ function MainCarpoolPage({ onLogout }) {
   const [dropoffLocation, setDropoffLocation] = useState('');
   const [arrivalDate, setArrivalDate] = useState('');
   const [filters, setFilters] = useState({
-    earliestPickupTime: '',
+    earliestPickupTime: getCurrentTime(),
     latestArrival: '',
     minSeatsAvailable: 1
   });
@@ -347,12 +355,19 @@ function MainCarpoolPage({ onLogout }) {
              
              {/* Create Carpool Button */}
              <div className="mb-6 border-b pb-6">
-               <button
-                  onClick={handleCreateCarpool}
-                  className="w-full px-4 py-3 bg-[#2A9D8F] text-white rounded-lg hover:bg-[#238577] transition duration-200"
-                >
-                  Create New Carpool
-               </button>
+               <div className="flex gap-4 mb-4">
+                 <button
+                    onClick={handleCreateCarpool}
+                    className="flex-1 px-4 py-3 bg-[#2A9D8F] text-white rounded-lg hover:bg-[#238577] transition duration-200"
+                  >
+                    Create New Carpool
+                 </button>
+                 <button
+                    className="flex-1 px-4 py-3 bg-[#264653] text-white rounded-lg hover:bg-[#1a323d] transition duration-200"
+                  >
+                    View My Carpools
+                 </button>
+               </div>
                
                {/* Input Fields - now with all filters included */}
                <div className="mt-4 space-y-4">

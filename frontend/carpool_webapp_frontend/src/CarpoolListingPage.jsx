@@ -134,12 +134,14 @@ function CarpoolListingPage() {
         return;
       }
       
-      // If both fail, show error
-      setError('Failed to load carpool information');
+      // If both fail, show error and set carpoolData to null explicitly
+      setError('Carpool not found or you don\'t have permission to view it');
+      setCarpoolData(null);
       setLoading(false);
     } catch (error) {
       console.error('Error fetching carpool data:', error);
       setError('An error occurred while loading carpool data');
+      setCarpoolData(null);
       setLoading(false);
     }
   };
@@ -345,11 +347,9 @@ function CarpoolListingPage() {
                   <p className="text-gray-600">Created on {new Date(carpoolData.created_at).toLocaleDateString()}</p>
                 </div>
                 <div className="bg-blue-50 p-3 rounded-lg text-center">
-                  <p className="text-sm text-gray-600">Capacity</p>
                   <p className="text-2xl font-bold text-blue-600">
-                    {carpoolData.capacity.current}/{carpoolData.capacity.max}
+                    {carpoolData.capacity.current}/{carpoolData.capacity.max} Passengers
                   </p>
-                  <p className="text-xs text-gray-500">passengers</p>
                 </div>
               </div>
               
@@ -375,24 +375,6 @@ function CarpoolListingPage() {
                   <p className="text-gray-600">
                     <span className="font-medium">Name:</span> {carpoolData.driver.full_name || carpoolData.driver.username}
                   </p>
-                  {carpoolData.driver.given_name && (
-                    <p className="text-gray-600">
-                      <span className="font-medium">First Name:</span> {carpoolData.driver.given_name}
-                    </p>
-                  )}
-                  {carpoolData.driver.surname && (
-                    <p className="text-gray-600">
-                      <span className="font-medium">Last Name:</span> {carpoolData.driver.surname}
-                    </p>
-                  )}
-                </div>
-                <div>
-                  <p className="text-gray-600">
-                    <span className="font-medium">Username:</span> {carpoolData.driver.username}
-                  </p>
-                  <p className="text-gray-600">
-                    <span className="font-medium">Driver ID:</span> {carpoolData.driver.id}
-                  </p>
                 </div>
               </div>
             </div>
@@ -405,25 +387,11 @@ function CarpoolListingPage() {
                   <p className="text-gray-600">
                     <span className="font-medium">Vehicle:</span> {carpoolData.vehicle.full_description || "Not specified"}
                   </p>
-                  <p className="text-gray-600">
-                    <span className="font-medium">Make:</span> {carpoolData.vehicle.make || "Not specified"}
-                  </p>
-                  <p className="text-gray-600">
-                    <span className="font-medium">Model:</span> {carpoolData.vehicle.model || "Not specified"}
-                  </p>
                 </div>
                 <div>
                   <p className="text-gray-600">
-                    <span className="font-medium">Year:</span> {carpoolData.vehicle.year || "Not specified"}
-                  </p>
-                  <p className="text-gray-600">
                     <span className="font-medium">License Plate:</span> {carpoolData.vehicle.license_plate || "Not specified"}
                   </p>
-                  {carpoolData.car_info && carpoolData.car_info.registered_state && (
-                    <p className="text-gray-600">
-                      <span className="font-medium">Registered State:</span> {carpoolData.car_info.registered_state}
-                    </p>
-                  )}
                 </div>
               </div>
             </div>
@@ -570,8 +538,14 @@ function CarpoolListingPage() {
             </div>
           </div>
         ) : (
-          <div className="text-center py-10">
-            <p className="text-gray-600 text-lg">No carpool data found</p>
+          <div className="text-center py-10 bg-white rounded-lg shadow-lg p-6">
+            <p className="text-gray-600 text-lg mb-4">Carpool not found or you don't have permission to view it</p>
+            <button
+              onClick={handleGoBack}
+              className="px-6 py-2 bg-[#2A9D8F] text-white rounded-lg hover:bg-[#238579]"
+            >
+              Return to Carpool Search
+            </button>
           </div>
         )}
       </div>
