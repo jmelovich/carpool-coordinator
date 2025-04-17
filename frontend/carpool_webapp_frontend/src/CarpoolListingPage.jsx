@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import Cookies from 'js-cookie';
+import RouteMap, { RouteMapModal } from './components/RouteMap';
 
 function CarpoolListingPage() {
   const [username, setUsername] = useState('');
@@ -10,6 +11,7 @@ function CarpoolListingPage() {
   const [isPublicView, setIsPublicView] = useState(false);
   const [userRole, setUserRole] = useState({ isDriver: false, isPassenger: false });
   const [actionLoading, setActionLoading] = useState(false);
+  const [showRouteMap, setShowRouteMap] = useState(false);
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const carpoolId = searchParams.get('carpool_id');
@@ -484,6 +486,30 @@ function CarpoolListingPage() {
                         </p>
                       )}
                     </div>
+                  </div>
+                )}
+                
+                {/* Display the map if user is driver or passenger */}
+                {(userRole.isDriver || userRole.isPassenger) && (
+                  <div className="mt-6">
+                    <h4 className="font-medium text-gray-700 mb-2">Route Map</h4>
+                    <button
+                      onClick={() => setShowRouteMap(true)}
+                      className="w-full py-3 bg-[#2A9D8F] text-white rounded-lg hover:bg-[#238579] transition-colors flex items-center justify-center"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+                      </svg>
+                      View Route Map
+                    </button>
+                    
+                    {/* Route Map Modal */}
+                    <RouteMapModal
+                      isOpen={showRouteMap}
+                      onClose={() => setShowRouteMap(false)}
+                      carpoolId={carpoolId}
+                      userRole={userRole}
+                    />
                   </div>
                 )}
               </div>

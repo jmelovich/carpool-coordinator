@@ -671,6 +671,121 @@ def remove_passenger():
         'message': result['message'],
         'carpool': carpool
     })
+
+@app.route('/api/carpool/route-map', methods=['GET'])
+@jwt_required()
+def get_route_map_data():
+    """Get route map data for a carpool with all waypoints for Google Maps integration"""
+    # Get current user ID from JWT token
+    current_user_id = int(get_jwt_identity())
+    
+    # Get carpool_id from query parameters
+    carpool_id = request.args.get('carpool_id')
+    
+    if not carpool_id:
+        return jsonify({'error': 'Carpool ID is required'}), 400
+    
+    try:
+        carpool_id = int(carpool_id)
+    except ValueError:
+        return jsonify({'error': 'Invalid carpool ID format'}), 400
+    
+    # Check if user has permission to view this carpool's route
+    role = get_user_role_in_carpool(carpool_id, current_user_id)
+    
+    if not role['carpool_exists']:
+        return jsonify({'error': 'Carpool not found'}), 404
+    
+    # Only allow viewing if user is driver or passenger
+    if not role['is_driver'] and not role['is_passenger']:
+        return jsonify({'error': 'You do not have permission to view this carpool route'}), 403
+    
+    # Get carpool details to extract route information
+    carpool_details = get_full_carpool_details(carpool_id, current_user_id)
+    
+    if not carpool_details:
+        return jsonify({'error': 'Failed to retrieve carpool details'}), 500
+    
+    try:
+        # Initialize Google Maps client
+        from app.database import get_gmaps_client
+        gmaps = get_gmaps_client()
+        
+        # Extract origin and destination addresses
+        origin_address = carpool_details['route']['origin']
+        destination_address = carpool_details['route']['destination']
+        
+        print(f"Geocoding origin address: {origin_address}")
+        
+        # Get geocoded origin and destination
+        origin_geocode = gmaps.geocode(origin_address)
+        if not origin_geocode:
+            print(f"Failed to geocode origin address: {origin_address}")
+            return jsonify({'error': f'Failed to geocode origin address: {origin_address}'}), 500
+            
+        print(f"Geocoding destination address: {destination_address}")
+        destination_geocode = gmaps.geocode(destination_address)
+        if not destination_geocode:
+            print(f"Failed to geocode destination address: {destination_address}")
+            return jsonify({'error': f'Failed to geocode destination address: {destination_address}'}), 500
+        
+        print(f"Successfully geocoded addresses")
+        
+        # Extract coordinates
+        origin_location = {
+            'lat': origin_geocode[0]['geometry']['location']['lat'],
+            'lng': origin_geocode[0]['geometry']['location']['lng']
+        }
+        
+        destination_location = {
+            'lat': destination_geocode[0]['geometry']['location']['lat'],
+            'lng': destination_geocode[0]['geometry']['location']['lng']
+        }
+        
+        # Get waypoints from passengers' pickup and dropoff locations
+        waypoints = []
+        
+        print(f"Processing {len(carpool_details['passengers'])} passengers for waypoints")
+        
+        for passenger in carpool_details['passengers']:
+            # Add pickup location
+            if passenger['pickup_location']:
+                print(f"Geocoding pickup: {passenger['pickup_location']}")
+                pickup_geocode = gmaps.geocode(passenger['pickup_location'])
+                if pickup_geocode:
+                    waypoints.append({
+                        'lat': pickup_geocode[0]['geometry']['location']['lat'],
+                        'lng': pickup_geocode[0]['geometry']['location']['lng'],
+                        'label': f"Pickup: {passenger['full_name']}"
+                    })
+                else:
+                    print(f"Failed to geocode pickup location: {passenger['pickup_location']}")
+            
+            # Add dropoff location
+            if passenger['dropoff_location']:
+                print(f"Geocoding dropoff: {passenger['dropoff_location']}")
+                dropoff_geocode = gmaps.geocode(passenger['dropoff_location'])
+                if dropoff_geocode:
+                    waypoints.append({
+                        'lat': dropoff_geocode[0]['geometry']['location']['lat'],
+                        'lng': dropoff_geocode[0]['geometry']['location']['lng'],
+                        'label': f"Dropoff: {passenger['full_name']}"
+                    })
+                else:
+                    print(f"Failed to geocode dropoff location: {passenger['dropoff_location']}")
+        
+        return jsonify({
+            'success': True,
+            'route': {
+                'origin': origin_location,
+                'destination': destination_location,
+                'waypoints': waypoints
+            }
+        })
+        
+    except Exception as e:
+        print(f"Error generating route map data: {e}")
+        return jsonify({'error': f'An error occurred: {str(e)}'}), 500
     
 
 
