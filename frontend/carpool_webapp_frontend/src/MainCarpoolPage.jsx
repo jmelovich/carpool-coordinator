@@ -8,7 +8,6 @@ function MainCarpoolPage({ onLogout }) {
   const [error, setError] = useState('');
   const [carpools, setCarpools] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [showFilters, setShowFilters] = useState(false);
   const [pickupLocation, setPickupLocation] = useState('');
   const [dropoffLocation, setDropoffLocation] = useState('');
   const [travelDate, setTravelDate] = useState('');
@@ -23,7 +22,22 @@ function MainCarpoolPage({ onLogout }) {
   
   const navigate = useNavigate();
 
+  // Validation function to check if required fields are filled
+  const areRequiredFieldsFilled = () => {
+    return pickupLocation && 
+           dropoffLocation && 
+           travelDate && 
+           filters.earliestPickupTime && 
+           filters.latestArrival;
+  };
+
   const fetchCarpools = useCallback(async () => {
+    // Don't proceed if required fields aren't filled
+    if (!areRequiredFieldsFilled()) {
+      setError('Please fill in all required fields (pickup, dropoff, date, earliest pickup time, and latest arrival time)');
+      return;
+    }
+
     setLoading(true);
     const accessToken = Cookies.get('access_token');
     if (!accessToken) {
@@ -59,6 +73,7 @@ function MainCarpoolPage({ onLogout }) {
 
       const data = await response.json();
       setCarpools(data.carpools || []);
+      setError(''); // Clear any previous errors
     } catch (error) {
       console.error('Error fetching carpools:', error);
       setError('Failed to load carpools. Please try again.');
@@ -96,7 +111,7 @@ function MainCarpoolPage({ onLogout }) {
         setUsername(data.user.username);
         
         // Load carpools after authenticating
-        fetchCarpools();
+        // Removed automatic fetchCarpools here to require user inputs first
       } catch (error) {
         console.error('Error fetching user info:', error);
         setError('Failed to load user information');
@@ -108,9 +123,11 @@ function MainCarpoolPage({ onLogout }) {
 
     fetchUserInfo();
     
-    // Set up interval to refresh carpools every 60 seconds
+    // Set up interval to refresh carpools every 60 seconds only if search was performed
     const intervalId = setInterval(() => {
-      fetchCarpools();
+      if (areRequiredFieldsFilled()) {
+        fetchCarpools();
+      }
     }, 60000);
     
     // Clean up interval on component unmount
@@ -253,6 +270,36 @@ function MainCarpoolPage({ onLogout }) {
     }
   };
 
+  // Helper function to format address from JSON string or object
+  const formatAddress = (address) => {
+    if (!address) return "Not specified";
+    
+    try {
+      // If it's a string that looks like JSON, parse it
+      const addressObj = typeof address === 'string' && address.includes('{') 
+        ? JSON.parse(address) 
+        : address;
+      
+      // Check if it's already an object with the expected properties
+      if (typeof addressObj === 'object') {
+        const parts = [];
+        
+        if (addressObj.street) parts.push(addressObj.street);
+        if (addressObj.city) parts.push(addressObj.city);
+        if (addressObj.state) parts.push(addressObj.state);
+        if (addressObj.zip) parts.push(addressObj.zip);
+        
+        return parts.join(', ');
+      }
+      
+      // If none of the above worked, just return the original
+      return address;
+    } catch (e) {
+      // If parsing fails, return the original string
+      return address;
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-100 flex flex-col">
       {/* Top Bar */}
@@ -302,27 +349,28 @@ function MainCarpoolPage({ onLogout }) {
                   Create New Carpool
                </button>
                
-               {/* Pickup and Dropoff Location Inputs using the new AddressInput component */}
+               {/* Input Fields - now with all filters included */}
                <div className="mt-4 space-y-4">
+                 {/* Pickup and Dropoff Location */}
                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                    <div>
                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                       Pickup Location:
+                       Pickup Location: <span className="text-red-500">*</span>
                      </label>
                      <AddressInput
                        value={pickupLocation}
                        onChange={setPickupLocation}
-                       placeholder="Click to select pickup address "
+                       placeholder="Click to select pickup address"
                      />
                    </div>
                    <div>
                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                       Dropoff Location:
+                       Dropoff Location: <span className="text-red-500">*</span>
                      </label>
                      <AddressInput
                        value={dropoffLocation}
                        onChange={setDropoffLocation}
-                       placeholder="Click to select destination address "
+                       placeholder="Click to select destination address"
                      />
                    </div>
                  </div>
@@ -330,7 +378,7 @@ function MainCarpoolPage({ onLogout }) {
                  {/* Date Selector */}
                  <div>
                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                     Travel Date
+                     Travel Date <span className="text-red-500">*</span>
                    </label>
                    <input
                      type="date"
@@ -340,71 +388,62 @@ function MainCarpoolPage({ onLogout }) {
                      className="w-full p-2 border rounded bg-white"
                    />
                  </div>
-               </div>
-             </div>
-             
-             {/* Filters Section */}
-             <div className="mb-6 border-b pb-6">
-               <button
-                 onClick={() => setShowFilters(!showFilters)}
-                 className="flex items-center justify-between w-full px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300"
-               >
-                 <span>Filters</span>
-                 <span>{showFilters ? '▲' : '▼'}</span>
-               </button>
-               
-               {showFilters && (
-                 <div className="mt-3 p-4 border rounded-lg bg-gray-50">
-                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                     <div>
-                       <label className="block text-sm font-medium text-gray-700 mb-2">
-                         Minimum Available Seats
-                       </label>
-                       <input
-                         type="number"
-                         name="minSeatsAvailable"
-                         min="1"
-                         max="10"
-                         value={filters.minSeatsAvailable}
-                         onChange={handleFilterChange}
-                         className="w-full p-2 border rounded bg-white"
-                       />
-                     </div>
-                     
-                     <div>
-                       <label className="block text-sm font-medium text-gray-700 mb-2">
-                         Earliest Pickup Time
-                       </label>
-                       <input
-                         type="time"
-                         name="earliestPickupTime"
-                         value={filters.earliestPickupTime}
-                         onChange={handleFilterChange}
-                         className="w-full p-2 border rounded bg-white"
-                       />
-                     </div>
-                     
-                     <div>
-                       <label className="block text-sm font-medium text-gray-700 mb-2">
-                         Latest Arrival Time
-                       </label>
-                       <input
-                         type="time"
-                         name="latestArrival"
-                         value={filters.latestArrival}
-                         onChange={handleFilterChange}
-                         className="w-full p-2 border rounded bg-white"
-                       />
-                     </div>
+                 
+                 {/* Moved filters here - Former dropdown content is now directly in the form */}
+                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                   <div>
+                     <label className="block text-sm font-medium text-gray-700 mb-2">
+                       Earliest Pickup Time <span className="text-red-500">*</span>
+                     </label>
+                     <input
+                       type="time"
+                       name="earliestPickupTime"
+                       value={filters.earliestPickupTime}
+                       onChange={handleFilterChange}
+                       className="w-full p-2 border rounded bg-white"
+                     />
+                   </div>
+                   
+                   <div>
+                     <label className="block text-sm font-medium text-gray-700 mb-2">
+                       Latest Arrival Time <span className="text-red-500">*</span>
+                     </label>
+                     <input
+                       type="time"
+                       name="latestArrival"
+                       value={filters.latestArrival}
+                       onChange={handleFilterChange}
+                       className="w-full p-2 border rounded bg-white"
+                     />
+                   </div>
+                   
+                   <div>
+                     <label className="block text-sm font-medium text-gray-700 mb-2">
+                       Minimum Available Seats
+                     </label>
+                     <input
+                       type="number"
+                       name="minSeatsAvailable"
+                       min="1"
+                       max="10"
+                       value={filters.minSeatsAvailable}
+                       onChange={handleFilterChange}
+                       className="w-full p-2 border rounded bg-white"
+                     />
                    </div>
                  </div>
-               )}
+               </div>
                
                {/* Search Button */}
                <div className="mt-4">
                  <button
                    onClick={fetchCarpools}
-                   className="w-full px-4 py-2 bg-[#E9C46A] text-white rounded-lg hover:bg-[#F4A261] transition duration-200"
+                   disabled={!areRequiredFieldsFilled()}
+                   className={`w-full px-4 py-2 rounded-lg transition duration-200 ${
+                     areRequiredFieldsFilled()
+                       ? 'bg-[#E9C46A] text-white hover:bg-[#F4A261]' 
+                       : 'bg-gray-300 text-gray-600 cursor-not-allowed'
+                   }`}
                  >
                    Search Carpools
                  </button>
@@ -454,10 +493,10 @@ function MainCarpoolPage({ onLogout }) {
                             
                             <div className="grid grid-cols-2 gap-x-4 gap-y-1 mb-2">
                               <p className="text-sm text-gray-600 truncate">
-                                <span className="font-medium">From:</span> {carpool.route.origin}
+                                <span className="font-medium">From:</span> {formatAddress(carpool.route.origin)}
                               </p>
                               <p className="text-sm text-gray-600 truncate">
-                                <span className="font-medium">To:</span> {carpool.route.destination}
+                                <span className="font-medium">To:</span> {formatAddress(carpool.route.destination)}
                               </p>
                               <p className="text-sm text-gray-600">
                                 <span className="font-medium">Departure:</span> {carpool.route.leave_earliest}

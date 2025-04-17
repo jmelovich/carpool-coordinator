@@ -553,6 +553,33 @@ def get_carpool_list(filters: Dict = None) -> List[Dict]:
                     if (carpool_capacity - current_passengers) < min_seats:
                         # Skip this carpool if it doesn't have enough available seats
                         continue
+                    
+                # Skip carpools with arrival time in the past
+                if 'route' in carpool and 'arrive_by' in carpool['route'] and carpool['route']['arrive_by']:
+                    try:
+                        # Parse the arrive_by time
+                        arrive_by = carpool['route']['arrive_by']
+                        
+                        # Handle combined date-time format with semicolon
+                        if ';' in arrive_by:
+                            date_part, time_part = arrive_by.split(';')
+                            # Convert to datetime object
+                            arrive_datetime = datetime.strptime(f"{date_part} {time_part}", "%m-%d-%Y %H:%M")
+                        else:
+                            # If only time is provided, we need the travel date
+                            if 'travel_date' in filters and filters['travel_date']:
+                                travel_date = filters['travel_date']
+                                arrive_datetime = datetime.strptime(f"{travel_date} {arrive_by}", "%Y-%m-%d %H:%M")
+                            else:
+                                # If no travel date, assume today
+                                today = datetime.now().strftime("%Y-%m-%d")
+                                arrive_datetime = datetime.strptime(f"{today} {arrive_by}", "%Y-%m-%d %H:%M")
+                        
+                        # Skip if arrival time is in the past
+                        if arrive_datetime < datetime.now():
+                            continue
+                    except ValueError as e:
+                        print(f"Error parsing arrive_by time: {e}")
                 
                 carpools.append(carpool)
         
@@ -1917,6 +1944,8 @@ def get_route_information(carpool: Dict, filters: Dict) -> Dict:
             'travel_date': travel_date,
             'is_viable': True  # Default to viable if no specific locations are provided
         }
+        
+    
     
     # Get Google Maps client
     gmaps = get_gmaps_client()
@@ -2301,9 +2330,10 @@ def calculate_route(gmaps, origin, destination, waypoints=None, departure_time=N
         Route information including distance, duration, steps
     """
     try:
-        # Set departure time to now if not specified
-        if departure_time is None:
-            departure_time = datetime.now()
+        # Set departure time to now if not specified or if it's in the past
+        now = datetime.now()
+        if departure_time is None or departure_time < now:
+            departure_time = now
         
         # Make directions API call
         directions_result = gmaps.directions(
