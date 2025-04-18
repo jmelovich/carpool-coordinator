@@ -6,7 +6,8 @@ from app.database import (
     get_quiz_by_id, save_quiz_results, get_specific_user_data, init_app, _substitute_context,
     reserve_carpool_listing_id, get_full_carpool_details, get_public_carpool_details,
     check_user_missing_info, get_options_from_universal_id, get_user_full_profile, delete_car,
-    get_carpool_list, add_passenger_to_carpool, get_user_role_in_carpool, remove_passenger_from_carpool
+    get_carpool_list, add_passenger_to_carpool, get_user_role_in_carpool, remove_passenger_from_carpool,
+    get_user_carpools
 )
 from flask_jwt_extended import (
     JWTManager, jwt_required, create_access_token, get_jwt_identity
@@ -786,6 +787,37 @@ def get_route_map_data():
     except Exception as e:
         print(f"Error generating route map data: {e}")
         return jsonify({'error': f'An error occurred: {str(e)}'}), 500
+    
+@app.route('/api/carpools/my-carpools', methods=['GET'])
+@jwt_required()
+def get_my_carpools():
+    """Get carpools where the current user is either a driver or passenger, with optional filtering"""
+    # Get current user ID from JWT token
+    current_user_id = int(get_jwt_identity())
+    
+    # Extract filters from request parameters
+    role_filter = request.args.get('role', 'either')
+    if role_filter not in ['driver', 'passenger', 'either']:
+        role_filter = 'either'  # Default to 'either' if invalid role provided
+    
+    arrival_date = request.args.get('arrival_date')
+    
+    # Convert hide_past from string to boolean
+    hide_past_param = request.args.get('hide_past', 'true')
+    hide_past = hide_past_param.lower() == 'true'
+    
+    # Get user's carpools with filtering
+    carpools = get_user_carpools(
+        user_id=current_user_id,
+        role_filter=role_filter,
+        arrival_date=arrival_date,
+        hide_past=hide_past
+    )
+    
+    return jsonify({
+        'success': True,
+        'carpools': carpools
+    })
     
 
 

@@ -11,7 +11,7 @@ const AddressInput = ({ value, onChange, placeholder }) => {
   const [showModal, setShowModal] = useState(false);
   const [address, setAddress] = useState(value || '');
   const [displayAddress, setDisplayAddress] = useState(value || '');
-  const [center, setCenter] = useState({ lat: 40.7128, lng: -74.0060 }); // Default to NYC
+  const [center, setCenter] = useState({ lat: 29.65207453683643, lng: -82.33933600712182  }); // Default to NYC
   const [marker, setMarker] = useState(null);
   
   const autocompleteRef = useRef(null);
