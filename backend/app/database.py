@@ -2522,3 +2522,105 @@ def get_user_role_in_carpool(carpool_id: int, user_id: int) -> Dict:
             'error': str(e)
         }
 
+def get_user_carpools(user_id: int, role_filter: str = 'either', arrival_date: str = None, hide_past: bool = True) -> List[Dict]:
+    """
+    Get carpools where the user is either a driver or a passenger, with optional filtering.
+    
+    Args:
+        user_id: ID of the user
+        role_filter: Filter by user's role - 'driver', 'passenger', or 'either' (default)
+        arrival_date: Filter by arrival date (YYYY-MM-DD format)
+        hide_past: If True, hide carpools with arrival time in the past
+        
+    Returns:
+        List of carpools where the user has the specified role
+    """
+    db = get_db()
+    carpools = []
+    
+    try:
+        # Current datetime for filtering past carpools
+        current_datetime = datetime.now().strftime('%Y-%m-%d %H:%M')
+        
+        # Initialize query parameters
+        params = []
+        
+        # Build the query based on role_filter
+        if role_filter == 'driver' or role_filter == 'either':
+            # Get carpools where user is the driver
+            driver_query = '''
+                SELECT carpool_id 
+                FROM carpool_list 
+                WHERE driver_id = ?
+            '''
+            
+            # Add filtering for past carpools if required
+            if hide_past:
+                driver_query += '''
+                    AND (
+                        (arrive_by IS NULL) OR 
+                        (arrive_by != '' AND (date(substr(arrive_by, 1, 10)) > date() OR 
+                        (date(substr(arrive_by, 1, 10)) = date() AND time(substr(arrive_by, 12)) >= time())))
+                    )
+                '''
+                
+            # Add filtering for specific arrival date if provided
+            if arrival_date:
+                driver_query += ' AND date(substr(arrive_by, 1, 10)) = date(?)'
+                params = [user_id, arrival_date]
+            else:
+                params = [user_id]
+                
+            driver_results = db.execute(driver_query, params).fetchall()
+            
+            # Add the driver carpools to the results
+            for row in driver_results:
+                carpool = get_carpool_listing(row['carpool_id'])
+                if carpool:
+                    carpool['user_role'] = 'driver'
+                    carpools.append(carpool)
+        
+        if role_filter == 'passenger' or role_filter == 'either':
+            # Get carpools where user is a passenger
+            passenger_query = '''
+                SELECT cp.carpool_id 
+                FROM carpool_passengers cp
+                JOIN carpool_list cl ON cp.carpool_id = cl.carpool_id
+                WHERE cp.passenger_id = ?
+            '''
+            
+            # Add filtering for past carpools if required
+            if hide_past:
+                passenger_query += '''
+                    AND (
+                        (cl.arrive_by IS NULL) OR 
+                        (cl.arrive_by != '' AND (date(substr(cl.arrive_by, 1, 10)) > date() OR 
+                        (date(substr(cl.arrive_by, 1, 10)) = date() AND time(substr(cl.arrive_by, 12)) >= time())))
+                    )
+                '''
+                
+            # Add filtering for specific arrival date if provided
+            if arrival_date:
+                passenger_query += ' AND date(substr(cl.arrive_by, 1, 10)) = date(?)'
+                params = [user_id, arrival_date]
+            else:
+                params = [user_id]
+                
+            passenger_results = db.execute(passenger_query, params).fetchall()
+            
+            # Add the passenger carpools to the results
+            for row in passenger_results:
+                carpool = get_carpool_listing(row['carpool_id'])
+                if carpool:
+                    carpool['user_role'] = 'passenger'
+                    carpools.append(carpool)
+        
+        # Sort carpools by arrival date (earliest first)
+        carpools.sort(key=lambda x: x['route']['arrive_by'] if x['route']['arrive_by'] else '9999-12-31 23:59')
+        
+        return carpools
+        
+    except sqlite3.Error as e:
+        print(f"Error getting user carpools: {e}")
+        return []
+

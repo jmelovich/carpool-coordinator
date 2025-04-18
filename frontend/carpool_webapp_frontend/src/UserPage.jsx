@@ -97,6 +97,18 @@ function UserPage() {
     navigate('/home');
   };
 
+  const formatAddress = (addressString) => {
+    if (!addressString) return 'Not provided';
+    
+    try {
+      const address = JSON.parse(addressString);
+      return `${address.street}, ${address.city}, ${address.state} ${address.zip}`;
+    } catch (e) {
+      console.error('Error parsing address:', e);
+      return addressString; // Return original string if parsing fails
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-100 flex items-center justify-center">
@@ -147,32 +159,26 @@ function UserPage() {
                   {profile.user_info ? (
                     <>
                       <div>
-                        <p className="text-gray-600 font-medium">Username:</p>
-                        <p>{profile.user_info.username || 'Not provided'}</p>
+                        <p><strong>Username:</strong> {profile.user_info.username || 'Not provided'}</p>
                       </div>
                       <div>
-                        <p className="text-gray-600 font-medium">Email:</p>
-                        <p>{profile.user_info.email || 'Not provided'}</p>
+                        <p><strong>Email:</strong> {profile.user_info.email || 'Not provided'}</p>
                       </div>
                       <div>
-                        <p className="text-gray-600 font-medium">Full Name:</p>
-                        <p>
-                          {profile.user_info.given_name && profile.user_info.surname 
+                        <p><strong>Full Name:</strong> {
+                          profile.user_info.given_name && profile.user_info.surname 
                             ? `${profile.user_info.given_name} ${profile.user_info.surname}`
-                            : 'Not provided'}
-                        </p>
+                            : 'Not provided'
+                        }</p>
                       </div>
                       <div>
-                        <p className="text-gray-600 font-medium">Birth Date:</p>
-                        <p>{profile.user_info.birth_date || 'Not provided'}</p>
+                        <p><strong>Birth Date:</strong> {profile.user_info.birth_date || 'Not provided'}</p>
                       </div>
                       <div>
-                        <p className="text-gray-600 font-medium">Sex:</p>
-                        <p>{profile.user_info.sex || 'Not provided'}</p>
+                        <p><strong>Sex:</strong> {profile.user_info.sex || 'Not provided'}</p>
                       </div>
                       <div>
-                        <p className="text-gray-600 font-medium">Home Address:</p>
-                        <p className="break-words">{profile.user_info.home_address || 'Not provided'}</p>
+                        <p className="break-words"><strong>Home Address:</strong> {formatAddress(profile.user_info.home_address)}</p>
                       </div>
                     </>
                   ) : (
@@ -199,16 +205,13 @@ function UserPage() {
                   {profile.driver_info ? (
                     <>
                       <div>
-                        <p className="text-gray-600 font-medium">Driver's License Number:</p>
-                        <p>{profile.driver_info.dln || 'Not provided'}</p>
+                        <p><strong>Driver's License Number:</strong> {profile.driver_info.dln || 'Not provided'}</p>
                       </div>
                       <div>
-                        <p className="text-gray-600 font-medium">License Expiration:</p>
-                        <p>{profile.driver_info.license_expiration || 'Not provided'}</p>
+                        <p><strong>License Expiration:</strong> {profile.driver_info.license_expiration || 'Not provided'}</p>
                       </div>
                       <div>
-                        <p className="text-gray-600 font-medium">Licensed State:</p>
-                        <p>{profile.driver_info.licensed_state || 'Not provided'}</p>
+                        <p><strong>Licensed State:</strong> {profile.driver_info.licensed_state || 'Not provided'}</p>
                       </div>
                     </>
                   ) : (
@@ -239,7 +242,20 @@ function UserPage() {
                           <h3 className="text-lg font-medium">
                             {car.year} {car.make} {car.model}
                           </h3>
-                          <div className="flex space-x-2">
+
+                        </div>
+                        <div className="grid grid-cols-2 gap-2 text-sm">
+                          <div>
+                            <p><strong>License Plate:</strong> {car.license_plate}</p>
+                          </div>
+                          <div>
+                            <p><strong>State:</strong> {car.registered_state}</p>
+                          </div>
+                          <div>
+                            <p><strong>Capacity:</strong> {car.max_capacity} passengers</p>
+                          </div>
+                        </div>
+                        <div className="flex space-x-2">
                             <button
                               onClick={() => navigate(`/quiz?id=car_info_quiz&plate=${car.license_plate}`)}
                               className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 text-sm"
@@ -253,21 +269,6 @@ function UserPage() {
                               Delete
                             </button>
                           </div>
-                        </div>
-                        <div className="grid grid-cols-2 gap-2 text-sm">
-                          <div>
-                            <p className="text-gray-600">License Plate:</p>
-                            <p className="font-medium">{car.license_plate}</p>
-                          </div>
-                          <div>
-                            <p className="text-gray-600">State:</p>
-                            <p className="font-medium">{car.registered_state}</p>
-                          </div>
-                          <div>
-                            <p className="text-gray-600">Capacity:</p>
-                            <p className="font-medium">{car.max_capacity} passengers</p>
-                          </div>
-                        </div>
                       </div>
                     ))}
                   </div>

@@ -18,10 +18,10 @@ function MainCarpoolPage({ onLogout }) {
   const [loading, setLoading] = useState(false);
   const [pickupLocation, setPickupLocation] = useState('');
   const [dropoffLocation, setDropoffLocation] = useState('');
-  const [arrivalDate, setArrivalDate] = useState('');
+  const [arrivalDate, setArrivalDate] = useState(new Date().toISOString().split('T')[0]);
   const [filters, setFilters] = useState({
     earliestPickupTime: getCurrentTime(),
-    latestArrival: '',
+    latestArrival: '23:59',
     minSeatsAvailable: 1
   });
   
@@ -149,6 +149,10 @@ function MainCarpoolPage({ onLogout }) {
 
   const handleGoHome = () => {
     navigate('/home');
+  };
+
+  const handleViewMyCarpools = () => {
+    navigate('/my-carpools');
   };
 
   const handleCreateCarpool = async () => {
@@ -363,6 +367,7 @@ function MainCarpoolPage({ onLogout }) {
                     Create New Carpool
                  </button>
                  <button
+                    onClick={handleViewMyCarpools}
                     className="flex-1 px-4 py-3 bg-[#264653] text-white rounded-lg hover:bg-[#1a323d] transition duration-200"
                   >
                     View My Carpools
