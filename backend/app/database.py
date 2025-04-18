@@ -2540,7 +2540,7 @@ def get_user_carpools(user_id: int, role_filter: str = 'either', arrival_date: s
     
     try:
         # Current datetime for filtering past carpools
-        current_datetime = datetime.now().strftime('%Y-%m-%d %H:%M')
+        current_datetime = datetime.now()
         
         # Initialize query parameters
         params = []
@@ -2559,14 +2559,30 @@ def get_user_carpools(user_id: int, role_filter: str = 'either', arrival_date: s
                 driver_query += '''
                     AND (
                         (arrive_by IS NULL) OR 
-                        (arrive_by != '' AND (date(substr(arrive_by, 1, 10)) > date() OR 
-                        (date(substr(arrive_by, 1, 10)) = date() AND time(substr(arrive_by, 12)) >= time())))
+                        (arrive_by = '') OR
+                        (
+                            arrive_by IS NOT NULL AND
+                            (
+                                strftime('%Y-%m-%d %H:%M', 
+                                    substr(arrive_by, 7, 4) || '-' || 
+                                    substr(arrive_by, 1, 2) || '-' || 
+                                    substr(arrive_by, 4, 2) || ' ' || 
+                                    substr(arrive_by, 12)
+                                ) > strftime('%Y-%m-%d %H:%M', 'now')
+                            )
+                        )
                     )
                 '''
                 
             # Add filtering for specific arrival date if provided
             if arrival_date:
-                driver_query += ' AND date(substr(arrive_by, 1, 10)) = date(?)'
+                driver_query += ''' 
+                    AND (
+                        substr(arrive_by, 7, 4) || '-' || 
+                        substr(arrive_by, 1, 2) || '-' || 
+                        substr(arrive_by, 4, 2) = ?
+                    )
+                '''
                 params = [user_id, arrival_date]
             else:
                 params = [user_id]
@@ -2594,14 +2610,30 @@ def get_user_carpools(user_id: int, role_filter: str = 'either', arrival_date: s
                 passenger_query += '''
                     AND (
                         (cl.arrive_by IS NULL) OR 
-                        (cl.arrive_by != '' AND (date(substr(cl.arrive_by, 1, 10)) > date() OR 
-                        (date(substr(cl.arrive_by, 1, 10)) = date() AND time(substr(cl.arrive_by, 12)) >= time())))
+                        (cl.arrive_by = '') OR
+                        (
+                            cl.arrive_by IS NOT NULL AND
+                            (
+                                strftime('%Y-%m-%d %H:%M', 
+                                    substr(cl.arrive_by, 7, 4) || '-' || 
+                                    substr(cl.arrive_by, 1, 2) || '-' || 
+                                    substr(cl.arrive_by, 4, 2) || ' ' || 
+                                    substr(cl.arrive_by, 12)
+                                ) > strftime('%Y-%m-%d %H:%M', 'now')
+                            )
+                        )
                     )
                 '''
                 
             # Add filtering for specific arrival date if provided
             if arrival_date:
-                passenger_query += ' AND date(substr(cl.arrive_by, 1, 10)) = date(?)'
+                passenger_query += '''
+                    AND (
+                        substr(cl.arrive_by, 7, 4) || '-' || 
+                        substr(cl.arrive_by, 1, 2) || '-' || 
+                        substr(cl.arrive_by, 4, 2) = ?
+                    )
+                '''
                 params = [user_id, arrival_date]
             else:
                 params = [user_id]
@@ -2616,7 +2648,36 @@ def get_user_carpools(user_id: int, role_filter: str = 'either', arrival_date: s
                     carpools.append(carpool)
         
         # Sort carpools by arrival date (earliest first)
-        carpools.sort(key=lambda x: x['route']['arrive_by'] if x['route']['arrive_by'] else '9999-12-31 23:59')
+        def get_arrival_datetime(carpool):
+            arrive_by = carpool['route']['arrive_by']
+            if not arrive_by:
+                return datetime.max
+            try:
+                # Parse MM-DD-YYYY;HH:MM format
+                parts = arrive_by.split(';')
+                if len(parts) != 2:
+                    return datetime.max
+                    
+                date_part = parts[0]
+                time_part = parts[1]
+                
+                date_parts = date_part.split('-')
+                if len(date_parts) != 3:
+                    return datetime.max
+                    
+                month, day, year = int(date_parts[0]), int(date_parts[1]), int(date_parts[2])
+                
+                time_parts = time_part.split(':')
+                if len(time_parts) != 2:
+                    return datetime.max
+                    
+                hour, minute = int(time_parts[0]), int(time_parts[1])
+                
+                return datetime(year, month, day, hour, minute)
+            except (ValueError, IndexError):
+                return datetime.max
+                
+        carpools.sort(key=get_arrival_datetime)
         
         return carpools
         
