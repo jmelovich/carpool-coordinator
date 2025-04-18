@@ -357,6 +357,26 @@ def reserve_carpool_listing_id(driver_id: int) -> Optional[int]:
     """
     conn = get_db()
     try:
+        # First, clean up stale carpool listings (where route_origin is NULL and created more than 1 hour ago)
+        one_hour_ago = datetime.now() - timedelta(hours=1)
+        one_hour_ago_str = one_hour_ago.strftime('%Y-%m-%d %H:%M:%S')
+        
+        cleanup_query = '''
+            DELETE FROM carpool_list 
+            WHERE (route_origin IS NULL OR route_origin = '') 
+            AND created_at < ?
+        '''
+        
+        cleanup_cursor = execute_with_retry(
+            conn,
+            cleanup_query,
+            (one_hour_ago_str,)
+        )
+        
+        if cleanup_cursor.rowcount > 0:
+            print(f"Cleaned up {cleanup_cursor.rowcount} stale carpool listings")
+        
+        # Then proceed with creating the new carpool listing
         cursor = execute_with_retry(
             conn,
             'INSERT INTO carpool_list (driver_id) VALUES (?)',

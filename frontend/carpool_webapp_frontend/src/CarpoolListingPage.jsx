@@ -297,9 +297,7 @@ function CarpoolListingPage() {
         <div className="flex items-center space-x-4">
            <h1 className="text-xl font-semibold text-[#2A9D8F]">Carpool Details</h1>
            <span className="text-gray-600">Welcome, {username || '...'}</span>
-           {isPublicView && <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded text-sm">Public View</span>}
-           {userRole.isDriver && <span className="bg-green-100 text-green-800 px-2 py-1 rounded text-sm">Driver</span>}
-           {userRole.isPassenger && <span className="bg-purple-100 text-purple-800 px-2 py-1 rounded text-sm">Passenger</span>}
+           {isPublicView && <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded text-sm"> -- Public View</span>}
         </div>
         <div className="flex items-center space-x-4">
           <button
