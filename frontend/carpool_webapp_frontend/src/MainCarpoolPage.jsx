@@ -33,8 +33,7 @@ function MainCarpoolPage({ onLogout }) {
   // Validation function to check if required fields are filled
   const areRequiredFieldsFilled = () => {
     return pickupLocation && 
-           dropoffLocation && 
-           arrivalDate && 
+           dropoffLocation &&  
            filters.earliestPickupTime && 
            filters.latestArrival;
   };
@@ -403,7 +402,7 @@ function MainCarpoolPage({ onLogout }) {
                  {/* Date Selector */}
                  <div>
                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                     Arrival Date <span className="text-red-500">*</span>
+                     Arrival Date: <span className="text-red-500"></span>
                    </label>
                    <input
                      type="date"
@@ -418,7 +417,7 @@ function MainCarpoolPage({ onLogout }) {
                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                    <div>
                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                       Earliest Pickup Time <span className="text-red-500">*</span>
+                       Earliest Pickup Time: <span className="text-red-500">*</span>
                      </label>
                      <input
                        type="time"
@@ -431,7 +430,7 @@ function MainCarpoolPage({ onLogout }) {
                    
                    <div>
                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                       Latest Arrival Time <span className="text-red-500">*</span>
+                       Latest Arrival Time: <span className="text-red-500">*</span>
                      </label>
                      <input
                        type="time"
@@ -444,7 +443,7 @@ function MainCarpoolPage({ onLogout }) {
                    
                    <div>
                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                       Minimum Available Seats
+                       Minimum Available Seats: 
                      </label>
                      <input
                        type="number"

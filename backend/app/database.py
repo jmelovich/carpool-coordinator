@@ -527,6 +527,17 @@ def get_carpool_list(filters: Dict = None) -> List[Dict]:
         # Apply additional filters if provided
         params = []
         if filters:
+            # Filter by arrival date if provided
+            if 'arrival_date' in filters and filters['arrival_date']:
+                query += '''
+                    AND (
+                        substr(arrive_by, 7, 4) || '-' || 
+                        substr(arrive_by, 1, 2) || '-' || 
+                        substr(arrive_by, 4, 2) = ?
+                    )
+                '''
+                params.append(filters['arrival_date'])
+            
             # Filter by minimum available seats
             if 'min_seats' in filters and filters['min_seats']:
                 # In a real implementation, we'd join with passengers and calculate dynamically
@@ -2322,12 +2333,7 @@ def get_route_information(carpool: Dict, filters: Dict = None) -> Dict:
         is_viable = True
         viability_issues = []
         
-        # Check driver's latest arrival constraint
-        if driver_latest_arrival and estimated_arrival > driver_latest_arrival:
-            is_viable = False
-            viability_issues.append(f"Would arrive after driver's latest arrival time of {driver_latest_arrival.strftime('%H:%M')}")
-        
-        # Check passenger time constraints
+        # Check passenger time constraints for existing passengers
         for constraint in time_constraints:
             if constraint['type'] == 'passenger' and constraint['latest_arrival']:
                 if constraint['latest_arrival'] < dropoff_time:
@@ -2336,41 +2342,69 @@ def get_route_information(carpool: Dict, filters: Dict = None) -> Dict:
                         f"Would conflict with {constraint['name']}'s latest arrival time of {constraint['latest_arrival'].strftime('%H:%M')}"
                     )
         
-        # Check if the pickup and dropoff times are compatible with the user's time constraints
-        # from the filters
-        if filters.get('earliest_pickup') and pickup_time:
+        # Get user's earliest pickup time from filters
+        user_earliest_pickup = None
+        if filters.get('earliest_pickup') and arrival_date:
             try:
-                # Parse the earliest pickup time from the filter
                 earliest_pickup_str = filters.get('earliest_pickup')
                 if ':' in earliest_pickup_str:
-                    if arrival_date:
-                        date_obj = datetime.strptime(arrival_date, "%Y-%m-%d")
-                        time_obj = datetime.strptime(earliest_pickup_str, "%H:%M")
-                        earliest_pickup = datetime.combine(date_obj.date(), time_obj.time())
-                        
-                        # Check if the estimated pickup time is before the user's earliest acceptable time
-                        if pickup_time < earliest_pickup:
-                            is_viable = False
-                            viability_issues.append(f"Pickup time {pickup_time.strftime('%H:%M')} is before your earliest acceptable time {earliest_pickup_str}")
+                    date_obj = datetime.strptime(arrival_date, "%Y-%m-%d")
+                    time_obj = datetime.strptime(earliest_pickup_str, "%H:%M")
+                    user_earliest_pickup = datetime.combine(date_obj.date(), time_obj.time())
             except ValueError as e:
                 print(f"Error parsing earliest pickup time: {e}")
         
-        if filters.get('latest_arrival') and dropoff_time:
+        # Get user's latest arrival time from filters
+        user_latest_arrival = None
+        if filters.get('latest_arrival') and arrival_date:
             try:
-                # Parse the latest arrival time from the filter
                 latest_arrival_str = filters.get('latest_arrival')
                 if ':' in latest_arrival_str:
-                    if arrival_date:
-                        date_obj = datetime.strptime(arrival_date, "%Y-%m-%d")
-                        time_obj = datetime.strptime(latest_arrival_str, "%H:%M")
-                        latest_arrival = datetime.combine(date_obj.date(), time_obj.time())
-                        
-                        # Check if the estimated dropoff time is after the user's latest acceptable time
-                        if dropoff_time > latest_arrival:
-                            is_viable = False
-                            viability_issues.append(f"Dropoff time {dropoff_time.strftime('%H:%M')} is after your latest acceptable time {latest_arrival_str}")
+                    date_obj = datetime.strptime(arrival_date, "%Y-%m-%d")
+                    time_obj = datetime.strptime(latest_arrival_str, "%H:%M")
+                    user_latest_arrival = datetime.combine(date_obj.date(), time_obj.time())
             except ValueError as e:
                 print(f"Error parsing latest arrival time: {e}")
+        
+        # Check if the current calculated pickup time works with user's earliest pickup time
+        needs_adjusted_departure = False
+        adjusted_departure_time = driver_earliest_departure
+        
+        if user_earliest_pickup and pickup_time < user_earliest_pickup:
+            # Instead of marking as not viable, calculate a new departure time that would work
+            time_difference = (user_earliest_pickup - pickup_time).total_seconds()
+            adjusted_departure_time = driver_earliest_departure + timedelta(seconds=time_difference)
+            needs_adjusted_departure = True
+        
+        # Recalculate arrival time with the adjusted departure time
+        adjusted_arrival_time = adjusted_departure_time + timedelta(seconds=total_duration_seconds)
+        
+        # Check if the adjusted arrival time would still meet the driver's latest arrival constraint
+        if driver_latest_arrival and adjusted_arrival_time > driver_latest_arrival:
+            is_viable = False
+            viability_issues.append(
+                f"With your earliest pickup time of {user_earliest_pickup.strftime('%H:%M')}, " + 
+                f"the trip would arrive after driver's latest arrival time of {driver_latest_arrival.strftime('%H:%M')}"
+            )
+        elif needs_adjusted_departure:
+            # Update the route info with adjusted times
+            pickup_time = user_earliest_pickup
+            dropoff_time = pickup_time + timedelta(seconds=pickup_to_dropoff_seconds)
+            
+            route_info.update({
+                'pickup_time': pickup_time.strftime("%H:%M"),
+                'dropoff_time': dropoff_time.strftime("%H:%M"),
+                'new_departure_time': adjusted_departure_time.strftime("%H:%M"),
+                'estimated_arrival': adjusted_arrival_time.strftime("%H:%M"),
+                'adjusted_departure': True  # Flag to indicate we adjusted the departure time
+            })
+        
+        # Check if the dropoff time works with user's latest arrival constraint
+        if user_latest_arrival and dropoff_time > user_latest_arrival:
+            is_viable = False
+            viability_issues.append(
+                f"Dropoff time {dropoff_time.strftime('%H:%M')} is after your latest acceptable time {user_latest_arrival.strftime('%H:%M')}"
+            )
         
         route_info['is_viable'] = is_viable
         route_info['viability_issues'] = viability_issues if not is_viable else []
