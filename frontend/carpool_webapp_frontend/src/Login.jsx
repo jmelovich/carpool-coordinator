@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Cookies from 'js-cookie';
 import './styles/styles.css';
-import background from './assets/green_splash_2.png';
+import background from './assets/green_splash.png';
 
 function Login({ setIsAuthenticated }) {
   const [formData, setFormData] = useState({
@@ -45,53 +45,44 @@ function Login({ setIsAuthenticated }) {
     }
   };
 
-  return (
-    <div className="mt-6 p-6 bg-white shadow-lg rounded-lg border w-80">
-      <div style={{backgroundImage: `url(${background})`, 
-      backgroundRepeat: "no-repeat", 
-      backgroundSize: "cover",
-      width:"89%",
-      margin:"0 auto", 
-      borderRadius:"20px",
-      height: "55em"}}>
-        <h2 className="text-lg font-semibold mb-2" style={{color: '#F3F0D7', paddingTop: "186px"}}>Welcome back!</h2>
+    return (
+    <div style={styles.container}>
+      <div style={{ ...styles.backdrop, backgroundImage: `url(${background})` }}>
+        <h1 style={styles.welcomeText}>Welcome back!</h1>
 
         {message && (
-          <div className={`alert ${message.type === "success" ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"} p-4 mb-4`}>
+          <div
+            style={{
+              ...styles.alert,
+              backgroundColor: message.type === 'success' ? '#d1fae5' : '#fee2e2',
+              color: message.type === 'success' ? '#065f46' : '#991b1b',
+            }}
+          >
             {message.text}
           </div>
         )}
-        <div style={{backgroundColor: '#233d14', borderRadius:"20px", margin: "1em 700px"}}>
-          <form onSubmit={handleLogin}>
-            <label className="largeLabel" style={{marginTop: "2em"}} htmlFor="username">
-              <input
-                className="inputBoxLoginRegister"
-                type="text"
-                name="username"
-                id="username"
-                placeholder="Username"
-                value={formData.username}
-                onChange={handleChange}
-                required
-              />
-            </label>
-            <label className="largeLabel" style={{marginTop: "10px"}} htmlFor="password">
-              <input
-                className="inputBoxLoginRegister"
-                type="password"
-                name="password"
-                id="password"
-                placeholder="Password"
-                value={formData.password}
-                onChange={handleChange}
-                required
-              />
-            </label>
-            <button
-              type="submit"
-              className="buttonLoginRegister w-full p-2 bg-[#87CEEB] text-[#333333] rounded-lg hover:bg-[#6bb5d8]"
-              style={{margin: "8px auto", width: "8em"}}
-            >
+
+        <div style={styles.loginBox}>
+          <form onSubmit={handleLogin} style={styles.form}>
+            <input
+              type="text"
+              name="username"
+              placeholder="USERNAME"
+              value={formData.username}
+              onChange={handleChange}
+              style={styles.input}
+              required
+            />
+            <input
+              type="password"
+              name="password"
+              placeholder="PASSWORD"
+              value={formData.password}
+              onChange={handleChange}
+              style={styles.input}
+              required
+            />
+            <button type="submit" style={styles.button}>
               Log In
             </button>
           </form>
@@ -100,5 +91,81 @@ function Login({ setIsAuthenticated }) {
     </div>
   );
 }
+
+const styles = {
+  container: {
+    width: '100vw',
+    height: '100vh',
+    backgroundColor: '#7b8b6f',
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: "60px",
+    boxSizing: "border-box"
+  },
+  backdrop: {
+    width: "100%",
+    maxWidth: "2000px",
+    height: "100%",
+    maxHeight: "1000px",
+    aspectRatio: "16 / 9",
+    borderRadius: "16px",
+    backgroundSize: "cover",
+    backgroundPosition: "center",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: "20px",
+    boxSizing: "border-box",
+    position: "relative",
+  },
+  welcomeText: {
+    color: '#F3F0D7',
+    fontSize: '28px',
+    fontWeight: '600',
+    marginBottom: '20px',
+  },
+  loginBox: {
+    backgroundColor: '#1e341b',
+    padding: '30px',
+    borderRadius: '14px',
+    boxShadow: '0 6px 12px rgba(0, 0, 0, 0.3)',
+    width: '320px',
+  },
+  form: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '14px',
+  },
+  input: {
+    padding: '12px',
+    borderRadius: '8px',
+    border: 'none',
+    backgroundColor: '#aab29a',
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: '14px',
+    outline: 'none',
+  },
+  button: {
+    padding: '10px',
+    borderRadius: '20px',
+    backgroundColor: '#c49e16',
+    color: 'white',
+    fontWeight: 'bold',
+    border: 'none',
+    cursor: 'pointer',
+    transition: '0.3s ease',
+  },
+  alert: {
+    padding: '10px 14px',
+    marginBottom: '14px',
+    borderRadius: '6px',
+    fontSize: '14px',
+    width: '320px',
+    textAlign: 'center',
+  },
+};
 
 export default Login;
