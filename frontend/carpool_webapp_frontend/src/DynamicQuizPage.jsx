@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import Cookies from 'js-cookie';
 import AddressInput from './components/AddressInput';
+import UserInfoLayout from './UserInfo';
 
 function DynamicQuizPage() {
   const [username, setUsername] = useState('');
@@ -14,15 +15,16 @@ function DynamicQuizPage() {
   const [quizDescription, setQuizDescription] = useState('');
   const [returnAddress, setReturnAddress] = useState('/home');
   const [queryParams, setQueryParams] = useState({});
-  
+
   const navigate = useNavigate();
   const location = useLocation();
+  const isUserInfoQuiz = quizId === 'user_info_quiz';
 
   useEffect(() => {
     // Extract all URL parameters
     const params = new URLSearchParams(location.search);
     const id = params.get('id');
-    
+
     // Create an object to store all query parameters
     const allParams = {};
     params.forEach((value, key) => {
@@ -30,11 +32,11 @@ function DynamicQuizPage() {
         allParams[key] = value;
       }
     });
-    
+
     // Store additional query parameters
     setQueryParams(allParams);
     console.log("Additional URL parameters:", allParams);
-    
+
     if (id) {
       setQuizId(id);
       console.log("Quiz ID from URL:", id);
@@ -65,7 +67,7 @@ function DynamicQuizPage() {
             'Content-Type': 'application/json',
           },
         });
-        
+
         if (!response.ok) {
           console.error('Failed to fetch user information:', response.status, response.statusText);
           // Delete cookie and redirect to login
@@ -88,15 +90,15 @@ function DynamicQuizPage() {
     const fetchQuizData = async () => {
       try {
         console.log("Fetching quiz data for ID:", id);
-        
+
         // Build query string with all URL parameters
         const queryString = new URLSearchParams({
           quiz_id: id,
           ...allParams // Use the local allParams variable directly
         }).toString();
-        
+
         console.log("Fetching quiz with query string:", queryString);
-        
+
         const response = await fetch(`http://127.0.0.1:5000/api/quiz/get?${queryString}`, {
           method: 'GET',
           headers: {
@@ -104,7 +106,7 @@ function DynamicQuizPage() {
             'Content-Type': 'application/json',
           },
         });
-        
+
         if (!response.ok) {
           console.error('Failed to fetch quiz data:', response.status, response.statusText);
           setError('Failed to load quiz data');
@@ -114,32 +116,32 @@ function DynamicQuizPage() {
 
         const data = await response.json();
         console.log("Quiz data from API:", data);
-        
+
         try {
           // Parse the JSON string from the response
           const quizData = JSON.parse(data.json);
           console.log("Parsed quiz data:", quizData);
-          
+
           // Set quiz metadata
           setQuizTitle(quizData.title);
           setQuizDescription(quizData.description);
           setReturnAddress(data.return_address);
-          
+
           // Set questions
           setQuestions(quizData.questions);
-          
+
           // Initialize answers object with values from existing_answers or empty values for each question
           const initialAnswers = {};
           quizData.questions.forEach(question => {
             // Check if there's an existing answer for this question's universal_id
             const existingAnswer = data.existing_answers[question.universal_id];
-            
+
             if (question.type === 'checkbox') {
               initialAnswers[question.id] = existingAnswer || [];
             } else if (question.type === 'address' && existingAnswer) {
               // Parse JSON string for address fields
               try {
-                initialAnswers[question.id] = typeof existingAnswer === 'string' 
+                initialAnswers[question.id] = typeof existingAnswer === 'string'
                   ? JSON.parse(existingAnswer)
                   : existingAnswer;
               } catch (error) {
@@ -150,7 +152,7 @@ function DynamicQuizPage() {
               initialAnswers[question.id] = existingAnswer || '';
             }
           });
-          
+
           console.log("Initial answers with existing data:", initialAnswers);
           setAnswers(initialAnswers);
           setLoading(false);
@@ -158,7 +160,7 @@ function DynamicQuizPage() {
           console.error('Error parsing quiz JSON:', parseError);
           setError('Failed to parse quiz data');
           setLoading(false);
-        }   
+        }
       } catch (error) {
         console.error('Error fetching quiz data:', error);
         setError('Failed to load quiz data');
@@ -200,18 +202,18 @@ function DynamicQuizPage() {
     console.log("Quiz ID:", quizId);
     console.log("Submitted answers:", answers);
     console.log("Context parameters:", queryParams);
-    
+
     // Create a map of universal_id to answers
     const universalIdAnswers = {};
-    
+
     // Create a mapping from universal_id to question_id
     const questionIdMap = {};
-    
+
     questions.forEach(question => {
       if (question.type === 'address') {
         // For address questions, parse and format properly
         let addressValue = answers[question.id];
-        
+
         // Handle different address formats
         if (typeof addressValue === 'string' && addressValue.trim() !== '') {
           // Parse the address string into components
@@ -239,13 +241,13 @@ function DynamicQuizPage() {
         // For non-address questions, use the value as is
         universalIdAnswers[question.universal_id] = answers[question.id];
       }
-      
+
       questionIdMap[question.universal_id] = question.id;
     });
-    
+
     console.log("Universal ID answers map:", universalIdAnswers);
     console.log("Question ID map:", questionIdMap);
-    
+
     try {
       const accessToken = Cookies.get('access_token');
       const response = await fetch('http://127.0.0.1:5000/api/quiz/save', {
@@ -262,9 +264,9 @@ function DynamicQuizPage() {
           context: queryParams
         }),
       });
-      
+
       const responseData = await response.json();
-      
+
       if (!response.ok) {
         // Check if there's a precondition failure message
         if (responseData.message) {
@@ -274,13 +276,13 @@ function DynamicQuizPage() {
         }
         return;
       }
-      
+
       alert("Quiz submitted successfully!");
-      
+
       // Use the processed return_address from response if available, otherwise fall back to the stored returnAddress
       const targetAddress = responseData.return_address || returnAddress;
       console.log("Navigating to:", targetAddress);
-      
+
       // Navigate to the processed return address
       navigate(targetAddress);
     } catch (error) {
@@ -298,14 +300,14 @@ function DynamicQuizPage() {
       state: '',
       zip: ''
     };
-    
+
     if (!addressStr || typeof addressStr !== 'string') {
       return defaultAddress;
     }
-    
+
     try {
       // Try to extract components using common patterns
-      
+
       // First check if it's already JSON
       try {
         const parsed = JSON.parse(addressStr);
@@ -320,23 +322,23 @@ function DynamicQuizPage() {
       } catch (e) {
         // Not JSON, continue with string parsing
       }
-      
+
       // Common format: "123 Main St, Anytown, NY 12345"
       const parts = addressStr.split(',').map(part => part.trim());
-      
+
       if (parts.length >= 3) {
         // Has at least street, city, state+zip
         const street = parts[0];
         const city = parts[1];
-        
+
         // Last part might be "NY 12345" or just "NY"
         const stateZipPart = parts[parts.length - 1];
         const stateZipMatch = stateZipPart.match(/([A-Z]{2})\s*(\d{5}(?:-\d{4})?)?/);
-        
+
         if (stateZipMatch) {
           const state = stateZipMatch[1] || '';
           const zip = stateZipMatch[2] || '';
-          
+
           return {
             street,
             city,
@@ -356,15 +358,15 @@ function DynamicQuizPage() {
         // Might be "123 Main St, Anytown NY 12345"
         const street = parts[0];
         const cityStateZip = parts[1];
-        
+
         // Try to extract state and zip from second part
         const cityStateZipMatch = cityStateZip.match(/(.+?)([A-Z]{2})\s*(\d{5}(?:-\d{4})?)?$/);
-        
+
         if (cityStateZipMatch) {
           const city = cityStateZipMatch[1].trim();
           const state = cityStateZipMatch[2] || '';
           const zip = cityStateZipMatch[3] || '';
-          
+
           return {
             street,
             city,
@@ -397,7 +399,7 @@ function DynamicQuizPage() {
 
   // Render different question types
   const renderQuestion = (question) => {
-    switch(question.type) {
+    switch (question.type) {
       case 'short_text':
         return (
           <input
@@ -409,7 +411,7 @@ function DynamicQuizPage() {
             required={question.required}
           />
         );
-      
+
       case 'long_text':
         return (
           <textarea
@@ -420,7 +422,7 @@ function DynamicQuizPage() {
             required={question.required}
           />
         );
-      
+
       case 'dropdown':
         return (
           <select
@@ -436,7 +438,7 @@ function DynamicQuizPage() {
             ))}
           </select>
         );
-      
+
       case 'multiple_choice':
         return (
           <div className="space-y-2">
@@ -457,7 +459,7 @@ function DynamicQuizPage() {
             ))}
           </div>
         );
-      
+
       case 'checkbox':
         return (
           <div className="space-y-2">
@@ -476,7 +478,7 @@ function DynamicQuizPage() {
             ))}
           </div>
         );
-      
+
       case 'date':
         // Convert stored MM-DD-YYYY to YYYY-MM-DD for the date input
         let dateInputValue = '';
@@ -490,7 +492,7 @@ function DynamicQuizPage() {
             console.error('Error parsing date value:', error);
           }
         }
-        
+
         return (
           <input
             type="date"
@@ -511,7 +513,7 @@ function DynamicQuizPage() {
             required={question.required}
           />
         );
-      
+
       case 'time':
         return (
           <input
@@ -526,13 +528,13 @@ function DynamicQuizPage() {
             required={question.required}
           />
         );
-      
+
       case 'date_time':
         // Parse existing value to populate date and time fields
         const existingDateTime = answers[question.id] || '';
         let dateValue = '';
         let timeValue = '';
-        
+
         if (existingDateTime) {
           const [datePart, timePart] = existingDateTime.split(';');
           if (datePart) {
@@ -548,7 +550,7 @@ function DynamicQuizPage() {
           }
           timeValue = timePart || '';
         }
-        
+
         return (
           <div className="space-y-2">
             <div className="flex gap-4 items-center">
@@ -561,7 +563,7 @@ function DynamicQuizPage() {
                   onChange={(e) => {
                     const newDateValue = e.target.value;
                     let newCombinedValue = '';
-                    
+
                     if (newDateValue) {
                       // Convert YYYY-MM-DD to MM-DD-YYYY
                       const [year, month, day] = newDateValue.split('-');
@@ -570,7 +572,7 @@ function DynamicQuizPage() {
                     } else if (timeValue) {
                       newCombinedValue = `;${timeValue}`;
                     }
-                    
+
                     handleInputChange(question.id, newCombinedValue);
                   }}
                   className="w-full p-2 border border-gray-300 rounded"
@@ -586,10 +588,10 @@ function DynamicQuizPage() {
                   onChange={(e) => {
                     const newTimeValue = e.target.value;
                     let newCombinedValue = '';
-                    
+
                     // Get the date part from the stored value in MM-DD-YYYY format
                     const datePart = existingDateTime.split(';')[0] || '';
-                    
+
                     if (datePart && newTimeValue) {
                       newCombinedValue = `${datePart};${newTimeValue}`;
                     } else if (datePart) {
@@ -597,7 +599,7 @@ function DynamicQuizPage() {
                     } else if (newTimeValue) {
                       newCombinedValue = `;${newTimeValue}`;
                     }
-                    
+
                     handleInputChange(question.id, newCombinedValue);
                   }}
                   className="w-full p-2 border border-gray-300 rounded"
@@ -607,17 +609,17 @@ function DynamicQuizPage() {
             </div>
           </div>
         );
-      
+
       case 'address':
         // For the newer address input format
-        const addressValue = typeof answers[question.id] === 'string' 
+        const addressValue = typeof answers[question.id] === 'string'
           ? answers[question.id] || ''
-          : (answers[question.id] && 
-             typeof answers[question.id] === 'object' && 
-             answers[question.id].street)
+          : (answers[question.id] &&
+            typeof answers[question.id] === 'object' &&
+            answers[question.id].street)
             ? `${answers[question.id].street}, ${answers[question.id].city || ''}, ${answers[question.id].state || ''} ${answers[question.id].zip || ''}`
             : '';
-            
+
         return (
           <div className="space-y-2">
             <AddressInput
@@ -630,7 +632,7 @@ function DynamicQuizPage() {
             />
           </div>
         );
-      
+
       case 'integer':
         return (
           <input
@@ -650,7 +652,7 @@ function DynamicQuizPage() {
             }}
           />
         );
-      
+
       default:
         return <p>Unsupported question type: {question.type}</p>;
     }
@@ -664,7 +666,7 @@ function DynamicQuizPage() {
     <div className="min-h-screen bg-gray-100">
       <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="bg-white rounded-lg shadow-lg p-6">
-          <div className="flex justify-between items-center mb-6">
+          {/* <div className="flex justify-between items-center mb-6">
             <h1 className="text-3xl font-bold text-[#2A9D8F]">
               {quizTitle || "Loading Quiz..."}
             </h1>
@@ -683,30 +685,48 @@ function DynamicQuizPage() {
             <div className="bg-red-100 text-red-800 p-4 mb-4 rounded-lg">
               {error}
             </div>
-          )}
+          )} */}
 
-          <p className="text-gray-600 mb-6">{quizDescription || "Loading description..."}</p>
+          {/* <p className="text-gray-600 mb-6">{quizDescription || "Loading description..."}</p> */}
 
           {questions.length > 0 ? (
-            <form onSubmit={handleSubmit} className="space-y-6">
-              {questions.map((question, index) => (
-                <div key={question.id} className="bg-[#E9F5F5] p-4 rounded-lg">
-                  <label className="block text-lg font-medium text-[#2A9D8F] mb-2">
-                    {index + 1}. {question.question} {question.required && <span className="text-red-500">*</span>}
-                  </label>
-                  {renderQuestion(question)}
+            isUserInfoQuiz ? (
+              <form onSubmit={handleSubmit}>
+                <UserInfoLayout
+                  questions={questions}
+                  answers={answers}
+                  onChange={handleInputChange}
+                />
+                <div className="flex justify-end mt-6">
+                  <button
+                    type="submit"
+                    className="px-6 py-3 bg-[#2A9D8F] text-white rounded-lg hover:bg-[#238577] font-medium"
+                  >
+                    Submit
+                  </button>
                 </div>
-              ))}
+              </form>
+            ) : (
+              <form onSubmit={handleSubmit} className="space-y-6">
+                {questions.map((question, index) => (
+                  <div key={question.id} className="bg-[#E9F5F5] p-4 rounded-lg">
+                    <label className="block text-lg font-medium text-[#2A9D8F] mb-2">
+                      {index + 1}. {question.question} {question.required && <span className="text-red-500">*</span>}
+                    </label>
+                    {renderQuestion(question)}
+                  </div>
+                ))}
 
-              <div className="flex justify-end">
-                <button
-                  type="submit"
-                  className="px-6 py-3 bg-[#2A9D8F] text-white rounded-lg hover:bg-[#238577] font-medium"
-                >
-                  Submit
-                </button>
-              </div>
-            </form>
+                <div className="flex justify-end">
+                  <button
+                    type="submit"
+                    className="px-6 py-3 bg-[#2A9D8F] text-white rounded-lg hover:bg-[#238577] font-medium"
+                  >
+                    Submit
+                  </button>
+                </div>
+              </form>
+            )
           ) : (
             <div className="text-center py-8">
               <p className="text-gray-600">No questions found for this quiz.</p>
