@@ -1,5 +1,6 @@
 import React from "react";
 import background from "./assets/forest_road.jpg";
+import EmbeddedAddressInput from "./components/EmbeddedAddressInput";
 
 export default function UserInfo({ questions = [], answers = {}, onChange = () => { } }) {
     const find = (label) =>
@@ -9,6 +10,7 @@ export default function UserInfo({ questions = [], answers = {}, onChange = () =
     const surnameQ = find("surname");
     const sexQ = find("sex");
     const dobQ = find("birth");
+    const addressQ = find("primary");
 
     return (
         <div
@@ -117,7 +119,18 @@ export default function UserInfo({ questions = [], answers = {}, onChange = () =
                     />
                 </div>
 
-                
+                <div style={{ display: "flex", gap: "20px", marginBottom: "30px" }}>
+                    <div style={{ flex: 1 }}>
+                        <EmbeddedAddressInput
+                            value={answers[addressQ?.id] || ''}
+                            onChange={(val) => onChange(addressQ?.id, val)}
+                            placeholder="RESIDENTIAL ADDRESS"
+                        />
+                    </div>
+                </div>
+
+
+
 
 
                 <style jsx>{`
