@@ -103,7 +103,7 @@ function App() {
             path="/carpool"
             element={
               isAuthenticated ? (
-                <MainCarpoolPage />
+                <MainCarpoolPage onLogout={handleLogout} />
               ) : (
                 <Navigate to="/" replace />
               )
