@@ -1,0 +1,81 @@
+
+:root {
+    --font-family-display: 'Raleway', sans-serif;
+    --font-family-form: 'Poppins', sans-serif;
+  }
+  
+  .register-container {
+    width: 100vw;
+    min-height: 100vh;
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    display: flex;
+    justify-content: flex-start;
+    align-items: center;
+    padding: 40px;
+    box-sizing: border-box;
+  }
+  
+  .register-backdrop {
+    background-color: rgba(32, 56, 17, 0.95);
+    border-radius: 20px;
+    padding: 40px;
+    width: 100%;
+    max-width: 500px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+    gap: 20px;
+  }
+  
+  .register-title {
+    font-size: 28px;
+    font-family: var(--font-family-display);
+    color: #F3F0D7;
+    font-weight: 600;
+  }
+  
+  .register-form {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    max-width: 300px;
+    align-self: center;
+  }
+  
+  .register-input {
+    background-color: rgba(243, 240, 215, 0.4);
+    color: white;
+    font-weight: 600;
+    font-family: var(--font-family-form);
+    border: none;
+    border-radius: 12px;
+    padding: 14px 20px;
+    font-size: 14px;
+    outline: none;
+    width: 100%;
+  }
+  
+  .register-input::placeholder {
+    color: rgba(255, 255, 255, 0.6);
+    text-transform: uppercase;
+  }
+  
+  .register-button {
+    padding: 10px;
+    border-radius: 100px;
+    background-color: #BD961F;
+    color: white;
+    font-weight: 700;
+    font-family: var(--font-family-form);
+    border: none;
+    cursor: pointer;
+    font-size: 15px;
+    transition: 0.3s ease;
+    max-width: 100%;
+  }
+  
