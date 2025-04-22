@@ -44,9 +44,9 @@ function RouteMap({ carpoolId, userRole, isModal = false }) {
   });
 
   useEffect(() => {
-    console.log("Maps loaded state:", mapsLoaded);
-    setDebugInfo(prev => ({ ...prev, apiLoaded: mapsLoaded }));
-  }, [mapsLoaded]);
+    console.log("Maps loaded state:", isLoaded);
+    setDebugInfo(prev => ({ ...prev, apiLoaded: isLoaded }));
+  }, [isLoaded]);
 
   // Fetch route data
   const fetchRouteMapData = useCallback(async () => {
@@ -156,7 +156,7 @@ function RouteMap({ carpoolId, userRole, isModal = false }) {
 
   // Fetch route data when dependencies change
   useEffect(() => {
-    if (mapsLoaded && (userRole.isDriver || userRole.isPassenger)) {
+    if (isLoaded && (userRole.isDriver || userRole.isPassenger)) {
       console.log("Initiating route data fetch");
       fetchRouteMapData();
       
@@ -170,9 +170,9 @@ function RouteMap({ carpoolId, userRole, isModal = false }) {
       
       return () => clearTimeout(timer);
     }
-  }, [mapsLoaded, fetchRouteMapData, userRole, mapLoaded]);
+  }, [isLoaded, fetchRouteMapData, userRole, mapLoaded]);
 
-  if (!mapsLoaded) {
+  if (!isLoaded) {
     return (
       <div className="w-full h-full flex flex-col items-center justify-center bg-gray-100">
         <p className="text-gray-500 mb-2">Loading map APIs...</p>

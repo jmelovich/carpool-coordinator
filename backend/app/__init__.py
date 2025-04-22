@@ -13,7 +13,7 @@ app.config.from_object(Config)
 CORS(app, resources={r"/*": {"origins": "*"}})
 
 # Set a secure secret key for JWT
-app.config['JWT_SECRET_KEY'] = os.environ.get('JWT_SECRET_KEY', 'SECRET_KEY_HERE')  # this should be changed later
+app.config['JWT_SECRET_KEY'] = os.environ.get('JWT_SECRET_KEY', 'SECRET_KEY_HERE')
 app.config['JWT_ACCESS_TOKEN_EXPIRES'] = datetime.timedelta(hours=1)
 app.config['JWT_TOKEN_LOCATION'] = ['headers']
 app.config['JWT_HEADER_NAME'] = 'Authorization'
