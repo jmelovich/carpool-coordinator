@@ -2,6 +2,16 @@
 
 import sqlite3
 from pathlib import Path
+import googlemaps
+from datetime import datetime, timedelta
+import os
+import json
+from typing import Optional, Dict, List, Tuple, Any
+import re
+import time
+import random
+import click # For Flask CLI commands
+from flask.cli import with_appcontext
 
 try:
     from flask_bcrypt import generate_password_hash
@@ -11,15 +21,6 @@ except ImportError:
     def generate_password_hash(pwd): return f"hashed_{pwd}".encode('utf-8')
 
 from flask import current_app, g # Import Flask g and current_app
-from typing import Optional, Dict, List, Tuple, Any
-from datetime import datetime
-import json
-import os
-import re
-import time
-import random
-import click # For Flask CLI commands
-from flask.cli import with_appcontext
 
 # --- Configuration ---
 # Best practice: Define DATABASE path in Flask app config.
@@ -356,6 +357,26 @@ def reserve_carpool_listing_id(driver_id: int) -> Optional[int]:
     """
     conn = get_db()
     try:
+        # First, clean up stale carpool listings (where route_origin is NULL and created more than 1 hour ago)
+        one_hour_ago = datetime.now() - timedelta(hours=1)
+        one_hour_ago_str = one_hour_ago.strftime('%Y-%m-%d %H:%M:%S')
+        
+        cleanup_query = '''
+            DELETE FROM carpool_list 
+            WHERE (route_origin IS NULL OR route_origin = '') 
+            AND created_at < ?
+        '''
+        
+        cleanup_cursor = execute_with_retry(
+            conn,
+            cleanup_query,
+            (one_hour_ago_str,)
+        )
+        
+        if cleanup_cursor.rowcount > 0:
+            print(f"Cleaned up {cleanup_cursor.rowcount} stale carpool listings")
+        
+        # Then proceed with creating the new carpool listing
         cursor = execute_with_retry(
             conn,
             'INSERT INTO carpool_list (driver_id) VALUES (?)',
@@ -369,59 +390,344 @@ def reserve_carpool_listing_id(driver_id: int) -> Optional[int]:
         print(f"Error creating carpool listing for driver ID {driver_id}: {e}")
         return None # Rely on close_db teardown to rollback
 
-def get_carpool_listing(carpool_id: int, user_id: int = None) -> Optional[Dict]:
-    """Get a carpool listing with the given ID.
+def get_carpool_listing(carpool_id: int, filters: Dict = None) -> Optional[Dict]:
+    """
+    Get detailed information about a specific carpool listing.
     
     Args:
-        carpool_id: The ID of the carpool listing
-        user_id: Optional user ID to verify ownership (if provided)
-        
+        carpool_id: ID of the carpool to retrieve
+        filters: Optional filters for route calculation
+            
     Returns:
-        Dictionary with carpool details or None if not found or not authorized
+        Dictionary containing carpool details or None if not found
     """
-    conn = get_db()
+    db = get_db()
     try:
-        cursor = execute_with_retry(
-            conn,
-            '''
+        # Get the carpool from the database
+        query = '''
             SELECT 
-                carpool_id, driver_id, route_origin, route_destination, 
-                arrive_by, leave_earliest, carpool_capacity, 
-                misc_data, created_at
-            FROM carpool_list 
-            WHERE carpool_id = ?
-            ''',
-            (carpool_id,)
-        )
+                cl.carpool_id, cl.driver_id, cl.route_origin, cl.route_destination, 
+                cl.arrive_by, cl.leave_earliest, cl.carpool_capacity, cl.misc_data,
+                cl.created_at, cl.vehicle_license_plate,
+                u.username as driver_username,
+                ui.given_name, ui.surname,
+                ci.make, ci.model, ci.year, ci.max_capacity, ci.license_plate
+            FROM carpool_list cl
+            JOIN users u ON cl.driver_id = u.id
+            LEFT JOIN user_info ui ON cl.driver_id = ui.user_id
+            LEFT JOIN car_info ci ON cl.vehicle_license_plate = ci.license_plate
+            WHERE cl.carpool_id = ?
+              AND cl.route_origin IS NOT NULL 
+              AND cl.route_destination IS NOT NULL
+              AND cl.route_origin != ''
+              AND cl.route_destination != ''
+        '''
         
-        carpool = cursor.fetchone()
-        if not carpool:
+        row = db.execute(query, (carpool_id,)).fetchone()
+        
+        if not row:
             return None
             
-        # Convert to dict for easier handling
-        carpool_dict = dict(carpool)
+        # Get passenger information for this carpool
+        passengers_query = '''
+            SELECT 
+                cp.passenger_id, cp.pickup_location, cp.pickup_time, 
+                cp.dropoff_location, cp.dropoff_time, cp.misc_data,
+                u.username, ui.given_name, ui.surname
+            FROM carpool_passengers cp
+            JOIN users u ON cp.passenger_id = u.id
+            LEFT JOIN user_info ui ON cp.passenger_id = ui.user_id
+            WHERE cp.carpool_id = ?
+        '''
+        passengers = []
+        passenger_rows = db.execute(passengers_query, (carpool_id,)).fetchall()
         
-        # Verify ownership if user_id provided
-        if user_id is not None and carpool_dict['driver_id'] != user_id:
-            return None  # Not authorized
+        for passenger_row in passenger_rows:
+            passenger_dict = dict(passenger_row)
             
-        # Process misc_data if it exists
-        if carpool_dict['misc_data']:
+            # Process any JSON misc_data for passenger
+            if passenger_dict.get('misc_data'):
+                try:
+                    misc_data = json.loads(passenger_dict['misc_data'])
+                    passenger_dict.update(misc_data)
+                    passenger_dict.pop('misc_data', None)
+                except json.JSONDecodeError:
+                    pass
+            
+            # Format full name
+            passenger_dict['full_name'] = f"{passenger_dict.get('given_name', '')} {passenger_dict.get('surname', '')}".strip()
+            if not passenger_dict['full_name']:
+                passenger_dict['full_name'] = passenger_dict['username']
+            
+            passengers.append(passenger_dict)
+        
+        # Get total passenger count
+        passenger_count = len(passengers)
+        
+        # Parse any JSON data stored in misc_data
+        misc_data = {}
+        if row['misc_data']:
             try:
-                misc_data = json.loads(carpool_dict['misc_data'])
-                driver_id = carpool_dict.pop('driver_id', None)
-                # Merge the misc_data into the main dict
-                carpool_dict.update(misc_data)
+                misc_data = json.loads(row['misc_data'])
             except json.JSONDecodeError:
-                # If JSON is invalid, keep the raw string
-                pass
-        else:
-            driver_id = carpool_dict.pop('driver_id', None)
+                misc_data = {}
+        
+        carpool = {
+            'carpool_id': row['carpool_id'],
+            'driver': {
+                'id': row['driver_id'],
+                'username': row['driver_username'],
+                'given_name': row['given_name'] or '',
+                'surname': row['surname'] or '',
+                'full_name': f"{row['given_name'] or ''} {row['surname'] or ''}".strip()
+            },
+            'route': {
+                'origin': row['route_origin'],
+                'destination': row['route_destination'],
+                'arrive_by': row['arrive_by'],
+                'leave_earliest': row['leave_earliest']
+            },
+            'vehicle': {
+                'make': row['make'] or '',
+                'model': row['model'] or '',
+                'year': row['year'] or '',
+                'license_plate': row['license_plate'] or '',
+                'full_description': f"{row['year'] or ''} {row['make'] or ''} {row['model'] or ''}".strip()
+            },
+            'capacity': {
+                'max': row['max_capacity'] or row['carpool_capacity'] or 0,
+                'current': passenger_count
+            },
+            'passengers': passengers,
+            'created_at': row['created_at'],
+            'misc_data': misc_data
+        }
+        
+        # Add route information if filters are provided
+        if filters and (filters.get('pickup_location') or filters.get('dropoff_location')):
+            route_info = get_route_information(carpool, filters)
+            if route_info:
+                carpool['route_info'] = route_info
+        
+        return carpool
             
-        return carpool_dict
     except sqlite3.Error as e:
-        print(f"Error getting carpool listing {carpool_id}: {e}")
+        print(f"Error getting carpool listing: {e}")
         return None
+
+def get_carpool_list(filters: Dict = None) -> List[Dict]:
+    """
+    Get available carpools with driver and car details based on optional filters.
+    Excludes incomplete carpool listings (those without origin or destination).
+    
+    Args:
+        filters: Optional dictionary containing filter criteria
+            - pickup_location: User's pickup location
+            - dropoff_location: User's dropoff location
+            - arrival_date: Date of arrival at destination
+            - min_seats: Minimum available seats
+            - earliest_pickup: Earliest pickup time
+            - latest_arrival: Latest arrival time
+            
+    Returns:
+        List of carpools with driver, car, and passenger information that match filters
+    """
+    db = get_db()
+    try:
+        # Get all carpools from the carpool_list table
+        query = '''
+            SELECT carpool_id
+            FROM carpool_list
+            WHERE route_origin IS NOT NULL 
+              AND route_destination IS NOT NULL
+              AND route_origin != ''
+              AND route_destination != ''
+        '''
+        
+        # Apply additional filters if provided
+        params = []
+        if filters:
+            # Filter by arrival date if provided
+            if 'arrival_date' in filters and filters['arrival_date']:
+                query += '''
+                    AND (
+                        substr(arrive_by, 7, 4) || '-' || 
+                        substr(arrive_by, 1, 2) || '-' || 
+                        substr(arrive_by, 4, 2) = ?
+                    )
+                '''
+                params.append(filters['arrival_date'])
+            
+            # Filter by minimum available seats
+            if 'min_seats' in filters and filters['min_seats']:
+                # In a real implementation, we'd join with passengers and calculate dynamically
+                # For simplicity in this MVP, we'll filter after fetching
+                pass
+            
+            # Filter by earliest pickup time and latest arrival is handled in route_info calculation
+        
+        # Execute the query
+        carpool_ids = db.execute(query, params).fetchall()
+        
+        carpools = []
+        for row in carpool_ids:
+            carpool_id = row['carpool_id']
+            carpool = get_carpool_listing(carpool_id, filters)
+            
+            if carpool:
+                # Apply min_seats filter if provided
+                if filters and 'min_seats' in filters and filters['min_seats']:
+                    min_seats = int(filters['min_seats'])
+                    carpool_capacity = carpool['capacity']['max']
+                    current_passengers = carpool['capacity']['current']
+                    
+                    if (carpool_capacity - current_passengers) < min_seats:
+                        # Skip this carpool if it doesn't have enough available seats
+                        continue
+                    
+                # Skip carpools with arrival time in the past
+                if 'route' in carpool and 'arrive_by' in carpool['route'] and carpool['route']['arrive_by']:
+                    try:
+                        # Parse the arrive_by time
+                        arrive_by = carpool['route']['arrive_by']
+                        
+                        # Handle combined date-time format with semicolon
+                        if ';' in arrive_by:
+                            date_part, time_part = arrive_by.split(';')
+                            # Convert to datetime object
+                            arrive_datetime = datetime.strptime(f"{date_part} {time_part}", "%m-%d-%Y %H:%M")
+                        else:
+                            # If only time is provided, we need the travel date
+                            if 'arrival_date' in filters and filters['arrival_date']:
+                                arrival_date = filters['arrival_date']
+                                arrive_datetime = datetime.strptime(f"{arrival_date} {arrive_by}", "%Y-%m-%d %H:%M")
+                            else:
+                                # If no travel date, assume today
+                                today = datetime.now().strftime("%Y-%m-%d")
+                                arrive_datetime = datetime.strptime(f"{today} {arrive_by}", "%Y-%m-%d %H:%M")
+                        
+                        # Skip if arrival time is in the past
+                        if arrive_datetime < datetime.now():
+                            continue
+                    except ValueError as e:
+                        print(f"Error parsing arrive_by time: {e}")
+                
+                carpools.append(carpool)
+        
+        return carpools
+            
+    except sqlite3.Error as e:
+        print(f"Error getting carpool list: {e}")
+        return []
+
+def add_passenger_to_carpool(carpool_id: int, passenger_id: int, pickup_location: str, 
+                            dropoff_location: str, filters: Dict = None) -> Dict:
+    """
+    Add a passenger to a carpool.
+    
+    Args:
+        carpool_id: ID of the carpool
+        passenger_id: ID of the user joining as passenger
+        pickup_location: Passenger's pickup location
+        dropoff_location: Passenger's dropoff location
+        filters: Additional filter data for calculating route information
+        
+    Returns:
+        Dictionary containing result information:
+            - success: Boolean indicating if operation was successful
+            - message: Descriptive message
+            - carpool: Updated carpool information if successful
+            - error: Error message if unsuccessful
+    """
+    db = get_db()
+    
+    try:
+        # First check if the carpool exists and has available capacity
+        carpool = get_carpool_listing(carpool_id, filters)
+        
+        if not carpool:
+            return {
+                'success': False,
+                'error': 'Carpool not found',
+                'message': 'The specified carpool does not exist.'
+            }
+        
+        # Check if the passenger is already in this carpool
+        check_query = "SELECT passenger_id FROM carpool_passengers WHERE carpool_id = ? AND passenger_id = ?"
+        existing = db.execute(check_query, (carpool_id, passenger_id)).fetchone()
+        
+        if existing:
+            return {
+                'success': False,
+                'error': 'already_joined',
+                'message': 'You are already a passenger in this carpool.'
+            }
+        
+        # Check if the passenger is the driver
+        if carpool['driver']['id'] == passenger_id:
+            return {
+                'success': False,
+                'error': 'driver_join_attempt',
+                'message': 'You cannot join your own carpool as a passenger.'
+            }
+        
+        # Check available capacity
+        if carpool['capacity']['current'] >= carpool['capacity']['max']:
+            return {
+                'success': False,
+                'error': 'carpool_full',
+                'message': 'This carpool is already at full capacity.'
+            }
+        
+        # Check route viability if route_info is available
+        if 'route_info' in carpool and not carpool['route_info'].get('is_viable', True):
+            return {
+                'success': False,
+                'error': 'route_not_viable',
+                'message': 'This carpool route is not viable for your requirements.',
+                'issues': carpool['route_info'].get('viability_issues', [])
+            }
+        
+        # Extract timing information from route_info if available
+        pickup_time = None
+        dropoff_time = None
+        
+        if 'route_info' in carpool:
+            pickup_time = carpool['route_info'].get('pickup_time')
+            dropoff_time = carpool['route_info'].get('dropoff_time')
+        
+        # Add the passenger to the carpool
+        insert_query = """
+            INSERT INTO carpool_passengers (
+                carpool_id, passenger_id, pickup_location, dropoff_location, 
+                pickup_time, dropoff_time
+            ) VALUES (?, ?, ?, ?, ?, ?)
+        """
+        
+        db.execute(insert_query, (
+            carpool_id, passenger_id, pickup_location, dropoff_location,
+            pickup_time, dropoff_time
+        ))
+        
+        db.commit()
+        
+        # Get the updated carpool information
+        updated_carpool = get_carpool_listing(carpool_id, filters)
+        
+        return {
+            'success': True,
+            'message': 'Successfully joined the carpool.',
+            'carpool': updated_carpool
+        }
+        
+    except sqlite3.Error as e:
+        db.rollback()
+        print(f"Error adding passenger to carpool: {e}")
+        return {
+            'success': False,
+            'error': 'database_error',
+            'message': f'An error occurred while joining the carpool: {str(e)}'
+        }
 
 def get_passenger_details(carpool_id: int) -> List[Dict]:
     """Get all passengers for a carpool listing.
@@ -442,9 +748,11 @@ def get_passenger_details(carpool_id: int) -> List[Dict]:
                 cp.carpool_id, cp.passenger_id, cp.pickup_location, 
                 cp.pickup_time, cp.dropoff_location, cp.dropoff_time, 
                 cp.misc_data,
-                u.username as passenger_name
+                u.username as passenger_name,
+                ui.given_name || ' ' || ui.surname as full_name
             FROM carpool_passengers cp
             JOIN users u ON cp.passenger_id = u.id
+            JOIN user_info ui ON cp.passenger_id = ui.user_id
             WHERE cp.carpool_id = ?
             ''',
             (carpool_id,)
@@ -543,7 +851,7 @@ def get_full_carpool_details(carpool_id: int, user_id: int = None) -> Optional[D
         
         # Verify ownership if user_id provided
         if user_id is not None and driver_id != user_id:
-            return None  # Not authorized
+            return get_public_carpool_details(carpool_id)
     
         # Get the basic carpool listing without driver_id
         carpool = get_carpool_listing(carpool_id)
@@ -578,15 +886,22 @@ def get_public_passenger_details(carpool_id: int) -> List[Dict]:
     """
     conn = get_db()
     try:
-        # Only get passenger IDs and names
+        # Get passenger details with more fields to match the full listing format
         cursor = execute_with_retry(
             conn,
             '''
             SELECT 
                 cp.passenger_id,
-                u.username as passenger_name
+                u.username,
+                ui.given_name, 
+                ui.surname,
+                cp.pickup_location,
+                cp.dropoff_location,
+                cp.pickup_time,
+                cp.dropoff_time
             FROM carpool_passengers cp
             JOIN users u ON cp.passenger_id = u.id
+            LEFT JOIN user_info ui ON cp.passenger_id = ui.user_id
             WHERE cp.carpool_id = ?
             ''',
             (carpool_id,)
@@ -595,6 +910,18 @@ def get_public_passenger_details(carpool_id: int) -> List[Dict]:
         passengers = []
         for row in cursor.fetchall():
             passenger_dict = dict(row)
+            
+            # Format full name as in the full listing
+            given_name = passenger_dict.get('given_name', '')
+            surname = passenger_dict.get('surname', '')
+            username = passenger_dict.get('username', '')
+            
+            full_name = f"{given_name} {surname}".strip()
+            if not full_name:
+                full_name = username
+                
+            passenger_dict['full_name'] = full_name
+            
             passengers.append(passenger_dict)
             
         return passengers
@@ -632,44 +959,78 @@ def get_public_carpool_details(carpool_id: int) -> Optional[Dict]:
             return None
             
         # Convert to dict for easier handling
-        carpool = dict(carpool_row)
-        driver_id = carpool.pop('driver_id', None)
+        carpool_base = dict(carpool_row)
+        driver_id = carpool_base.pop('driver_id', None)
         
         # Get driver's username
         driver_cursor = execute_with_retry(
             conn,
-            'SELECT username FROM users WHERE id = ?',
+            'SELECT username, id FROM users WHERE id = ?',
             (driver_id,)
         )
         driver_row = driver_cursor.fetchone()
-        if driver_row:
-            carpool['driver_name'] = driver_row['username']
-            
+        
+        # Get driver info from user_info
+        driver_info_cursor = execute_with_retry(
+            conn,
+            'SELECT given_name, surname FROM user_info WHERE user_id = ?',
+            (driver_id,)
+        )
+        driver_info = driver_info_cursor.fetchone()
+        
         # Get limited passenger details
         passengers = get_public_passenger_details(carpool_id)
         
         # Add passengers to the carpool details
-        carpool['passengers'] = passengers
+        passenger_count = len(passengers) if passengers else 0
         
         # Get car info for the driver (excluding sensitive details)
-        cursor = execute_with_retry(
+        car_cursor = execute_with_retry(
             conn,
             '''
             SELECT 
-                make, model, year, max_capacity
+                make, model, year, max_capacity, license_plate
             FROM car_info 
             WHERE driver_id = ?
             ''',
             (driver_id,)
         )
         
-        car = cursor.fetchone()
-        if car:
-            car_dict = dict(car)
-            # Add car info to the carpool details
-            carpool['car_info'] = car_dict
-        else:
-            carpool['car_info'] = {}
+        car = car_cursor.fetchone()
+        car_info = dict(car) if car else {}
+        
+        # Structure the return data to match get_carpool_listing format
+        carpool = {
+            'carpool_id': carpool_base.get('carpool_id'),
+            'driver': {
+                'id': driver_id,
+                'username': driver_row['username'] if driver_row else '',
+                'given_name': driver_info['given_name'] if driver_info else '',
+                'surname': driver_info['surname'] if driver_info else '',
+                'full_name': f"{driver_info['given_name'] if driver_info and driver_info['given_name'] else ''} {driver_info['surname'] if driver_info and driver_info['surname'] else ''}".strip() if driver_info else ''
+            },
+            'route': {
+                'origin': carpool_base.get('route_origin', ''),
+                'destination': carpool_base.get('route_destination', ''),
+                'arrive_by': carpool_base.get('arrive_by', ''),
+                'leave_earliest': carpool_base.get('leave_earliest', '')
+            },
+            'vehicle': {
+                'make': car_info.get('make', ''),
+                'model': car_info.get('model', ''),
+                'year': car_info.get('year', ''),
+                'license_plate': car_info.get('license_plate', ''),
+                'full_description': f"{car_info.get('year', '')} {car_info.get('make', '')} {car_info.get('model', '')}".strip()
+            },
+            'capacity': {
+                'max': car_info.get('max_capacity', 0) or carpool_base.get('carpool_capacity', 0),
+                'current': passenger_count
+            },
+            'passengers': passengers,
+            'created_at': carpool_base.get('created_at', ''),
+            'misc_data': {},
+            'car_info': car_info
+        }
         
         return carpool
     except sqlite3.Error as e:
@@ -1634,122 +1995,747 @@ def delete_car(driver_id: int, license_plate: str) -> bool:
         print(f"Error deleting car {license_plate} for driver {driver_id}: {e}")
         return False
 
-def get_carpool_list(filters: Dict = None) -> List[Dict]:
+def get_route_information(carpool: Dict, filters: Dict = None) -> Dict:
     """
-    Get available carpools with driver and car details based on optional filters.
-    Excludes incomplete carpool listings (those without origin or destination).
+    Calculate route information between user's pickup/dropoff locations and the carpool's route.
+    This will be used to determine if a carpool is a good match for the user based on distance,
+    time, and other route-related factors.
     
     Args:
-        filters: Optional dictionary containing filter criteria
-            - max_distance: Maximum distance from origin (not implemented yet)
-            - min_seats: Minimum available seats
-            - earliest_departure: Earliest departure time
-            - latest_arrival: Latest arrival time
-            - vehicle_types: List of preferred vehicle types
+        carpool: Dictionary containing carpool information including driver and passenger details
+        filters: Optional dictionary containing filter criteria including:
+            - pickup_location: User's pickup location
+            - dropoff_location: User's dropoff location
+            - arrival_date: Date of arrival at destination
             
     Returns:
-        List of carpools with driver, car, and passenger information that match filters
+        Dictionary containing route information:
+            - pickup_distance: Distance from user's pickup to carpool origin
+            - dropoff_distance: Distance from carpool destination to user's dropoff
+            - total_distance: Total distance of the route
+            - total_duration: Total duration of the route in minutes
+            - pickup_time: Estimated pickup time
+            - dropoff_time: Estimated dropoff time
+            - is_viable: Whether this carpool is viable for the user (only if filters provided)
     """
-    db = get_db()
-    try:
-        # Get all carpools from the carpool_list table
-        query = '''
-            SELECT 
-                cl.carpool_id, cl.driver_id, cl.route_origin, cl.route_destination, 
-                cl.arrive_by, cl.leave_earliest, cl.carpool_capacity, cl.misc_data,
-                cl.created_at,
-                u.username as driver_username,
-                ui.given_name, ui.surname,
-                ci.make, ci.model, ci.year, ci.max_capacity, ci.license_plate
-            FROM carpool_list cl
-            JOIN users u ON cl.driver_id = u.id
-            LEFT JOIN user_info ui ON cl.driver_id = ui.user_id
-            LEFT JOIN car_info ci ON cl.vehicle_license_plate = ci.license_plate
-            WHERE cl.route_origin IS NOT NULL 
-              AND cl.route_destination IS NOT NULL
-              AND cl.route_origin != ''
-              AND cl.route_destination != ''
-        '''
+    filters = filters or {}
+    pickup_location = filters.get('pickup_location')
+    dropoff_location = filters.get('dropoff_location')
+    arrival_date = filters.get('arrival_date')
+    
+    # If no pickup or dropoff location provided and filters were expected, return basic info
+    if filters and (not pickup_location or not dropoff_location):
+        return {
+            'pickup_location': pickup_location,
+            'dropoff_location': dropoff_location,
+            'arrival_date': arrival_date,
+            'is_viable': True  # Default to viable if no specific locations are provided
+        }
         
-        # Apply additional filters if provided
-        params = []
+    # Get Google Maps client
+    gmaps = get_gmaps_client()
+    
+    # Get carpool origin and destination
+    carpool_origin = carpool['route']['origin']
+    carpool_destination = carpool['route']['destination']
+    
+    # Set departure and arrival times for driver
+    # Parse the time strings from the carpool
+    driver_earliest_departure = None
+    driver_latest_arrival = None
+    
+    if arrival_date:
+        # If we have an arrival date, combine it with the time
+        try:
+            date_obj = datetime.strptime(arrival_date, "%Y-%m-%d")
+            
+            if carpool['route']['leave_earliest']:
+                # Check if the time contains a semicolon (which indicates a combined date-time format)
+                if ';' in carpool['route']['leave_earliest']:
+                    # This is a combined date-time format like "04-17-2025;10:49"
+                    # Extract just the time portion and parse it
+                    time_part = carpool['route']['leave_earliest'].split(';')[1]
+                    time_obj = datetime.strptime(time_part, "%H:%M")
+                else:
+                    # Standard time format
+                    time_obj = datetime.strptime(carpool['route']['leave_earliest'], "%H:%M")
+                
+                driver_earliest_departure = datetime.combine(
+                    date_obj.date(), 
+                    time_obj.time()
+                )
+            
+            if carpool['route']['arrive_by']:
+                # Check if the time contains a semicolon
+                if ';' in carpool['route']['arrive_by']:
+                    # Combined date-time format
+                    time_part = carpool['route']['arrive_by'].split(';')[1]
+                    time_obj = datetime.strptime(time_part, "%H:%M")
+                else:
+                    # Standard time format
+                    time_obj = datetime.strptime(carpool['route']['arrive_by'], "%H:%M")
+                
+                driver_latest_arrival = datetime.combine(
+                    date_obj.date(), 
+                    time_obj.time()
+                )
+        except ValueError as e:
+            print(f"Error parsing driver dates: {e}")
+            # Use current time as fallback
+            driver_earliest_departure = datetime.now()
+    else:
+        # Use current time if no travel date specified
+        driver_earliest_departure = datetime.now()
+        
+    # If driver_earliest_departure is in the past, set it to now
+    if driver_earliest_departure and driver_earliest_departure < datetime.now():
+        print(f"Adjusting driver departure time from {driver_earliest_departure} to now as it was in the past")
+        driver_earliest_departure = datetime.now()
+    
+    # Collect all passenger pickup/dropoff locations and time constraints
+    waypoints = []
+    time_constraints = []
+    
+    # Add driver constraints
+    time_constraints.append({
+        'name': carpool['driver']['full_name'],
+        'type': 'driver',
+        'earliest_departure': driver_earliest_departure,
+        'latest_arrival': driver_latest_arrival
+    })
+    
+    # Process existing passengers
+    for passenger in carpool.get('passengers', []):
+        p_pickup = passenger.get('pickup_location')
+        p_dropoff = passenger.get('dropoff_location')
+        
+        # Add existing pickup and dropoff points as waypoints
+        if p_pickup:
+            waypoints.append(p_pickup)
+        if p_dropoff:
+            waypoints.append(p_dropoff)
+        
+        # Process passenger time constraints
+        p_pickup_time = passenger.get('pickup_time')
+        p_dropoff_time = passenger.get('dropoff_time')
+        
+        p_earliest_departure = None
+        p_latest_arrival = None
+        
+        if arrival_date and p_pickup_time:
+            try:
+                date_obj = datetime.strptime(arrival_date, "%Y-%m-%d")
+                time_obj = datetime.strptime(p_pickup_time, "%H:%M")
+                p_earliest_departure = datetime.combine(date_obj.date(), time_obj.time())
+            except ValueError:
+                pass
+                
+        if arrival_date and p_dropoff_time:
+            try:
+                date_obj = datetime.strptime(arrival_date, "%Y-%m-%d")
+                time_obj = datetime.strptime(p_dropoff_time, "%H:%M")
+                p_latest_arrival = datetime.combine(date_obj.date(), time_obj.time())
+            except ValueError:
+                pass
+        
+        time_constraints.append({
+            'name': passenger.get('full_name', passenger.get('username', 'Unknown passenger')),
+            'type': 'passenger',
+            'earliest_departure': p_earliest_departure,
+            'latest_arrival': p_latest_arrival
+        })
+    
+    # Calculate direct route without the user (original carpool route with existing passengers)
+    original_route = calculate_route(
+        gmaps, 
+        carpool_origin, 
+        carpool_destination, 
+        waypoints=waypoints,
+        departure_time=driver_earliest_departure
+    )
+    
+    if not original_route:
+        result = {
+            'error': 'Could not calculate original route',
+        }
         if filters:
-            # Filter by minimum available seats
-            if 'min_seats' in filters and filters['min_seats']:
-                min_seats = filters['min_seats']
-                # This is a placeholder - in a real implementation we'd need to join with passengers
-                # and calculate available seats dynamically
-            
-            # Filter by earliest departure time
-            if 'earliest_departure' in filters and filters['earliest_departure']:
-                # Time comparison would depend on how time is stored (string format)
-                pass
-                
-            # Filter by latest arrival time
-            if 'latest_arrival' in filters and filters['latest_arrival']:
-                # Time comparison would depend on how time is stored (string format)
-                pass
-                
-            # Filter by vehicle types
-            if 'vehicle_types' in filters and filters['vehicle_types']:
-                # Would need to search in make/model fields or add a vehicle_type field
-                pass
+            result.update({
+                'pickup_location': pickup_location,
+                'dropoff_location': dropoff_location,
+                'arrival_date': arrival_date,
+                'is_viable': False
+            })
+        return result
+    
+    # Calculate original route metrics
+    original_legs = original_route.get('legs', [])
+    original_distance = sum(leg['distance']['value'] for leg in original_legs) / 1609.34  # Convert meters to miles
+    original_duration = sum(leg['duration']['value'] for leg in original_legs) / 60  # Convert seconds to minutes
+    
+    # If no filters provided, calculate basic route information without user pickup/dropoff
+    if not filters or (not pickup_location and not dropoff_location):
+        # Prepare the route information to return
+        route_info = {
+            'total_distance': round(original_distance, 1),  # Total route distance in miles
+            'total_duration': round(original_duration, 1),  # Total route duration in minutes
+            'new_departure_time': driver_earliest_departure.strftime("%H:%M"),  # New departure time
+            'estimated_arrival': (driver_earliest_departure + timedelta(minutes=original_duration)).strftime("%H:%M"),
+            'passenger_count': len(carpool.get('passengers', [])),  # Number of existing passengers
+            'total_stops': len(waypoints)  # Total number of stops in the route
+        }
+        return route_info
+    
+    # Add new user's pickup and dropoff locations to waypoints
+    new_waypoints = waypoints.copy()
+    new_waypoints.append(pickup_location)
+    new_waypoints.append(dropoff_location)
+    
+    # Calculate route with user's pickup and dropoff
+    new_route = calculate_route(
+        gmaps,
+        carpool_origin,
+        carpool_destination,
+        waypoints=new_waypoints,
+        departure_time=driver_earliest_departure
+    )
+    
+    if not new_route:
+        result = {
+            'error': 'Could not calculate route with pickup/dropoff locations',
+        }
+        if filters:
+            result.update({
+                'pickup_location': pickup_location,
+                'dropoff_location': dropoff_location,
+                'arrival_date': arrival_date,
+                'is_viable': False
+            })
+        return result
+    
+    # Extract leg information
+    new_legs = new_route.get('legs', [])
+    
+    # Calculate total distance and duration for new route
+    total_distance_meters = sum(leg['distance']['value'] for leg in new_legs)
+    total_duration_seconds = sum(leg['duration']['value'] for leg in new_legs)
+    
+    total_distance = total_distance_meters / 1609.34  # Convert meters to miles
+    total_duration = total_duration_seconds / 60  # Convert seconds to minutes
+    
+    # Calculate detour information (how much the new route deviates from original)
+    distance_detour = total_distance - original_distance
+    duration_detour = total_duration - original_duration
+    
+    # Analyze the route to determine pickup and dropoff times
+    # The previous approach didn't work correctly, so let's implement a better one
+    # We need a more robust approach that doesn't rely on waypoint indices
+    
+    # Since Google Maps API doesn't directly tell us which legs correspond to which waypoints,
+    # we need to implement a better estimation algorithm
+    
+    # Calculate the user's position in the overall journey
+    # Assuming this is a sequential journey: origin -> waypoints -> destination
+    # We need to analyze the actual locations and their distances
+    
+    try:
+        # For more accurate calculation, let's use Google Distance Matrix API to calculate
+        # the actual distance from origin to user's pickup and from origin to user's dropoff
+        origin_to_pickup = gmaps.distance_matrix(
+            carpool_origin, 
+            pickup_location, 
+            mode="driving",
+            departure_time=driver_earliest_departure
+        )
         
-        # Execute the query
-        carpool_rows = db.execute(query, params).fetchall()
-
-        carpools = []
-        for row in carpool_rows:
-            carpool_id = row['carpool_id']
+        # Instead of calculating origin to dropoff directly, calculate pickup to dropoff
+        # This ensures proper sequencing: origin -> pickup -> dropoff -> destination
+        pickup_to_dropoff = gmaps.distance_matrix(
+            pickup_location, 
+            dropoff_location, 
+            mode="driving",
+            departure_time=driver_earliest_departure
+        )
+        
+        # Extract the time it takes to go from origin to pickup location
+        pickup_time_seconds = origin_to_pickup['rows'][0]['elements'][0]['duration']['value']
+        
+        # Extract the time it takes to go from pickup to dropoff location
+        pickup_to_dropoff_seconds = pickup_to_dropoff['rows'][0]['elements'][0]['duration']['value']
+        
+        # Dropoff time is pickup time plus travel time from pickup to dropoff
+        dropoff_time_seconds = pickup_time_seconds + pickup_to_dropoff_seconds
+        
+        # Calculate the actual times
+        pickup_time = driver_earliest_departure + timedelta(seconds=pickup_time_seconds)
+        dropoff_time = driver_earliest_departure + timedelta(seconds=dropoff_time_seconds)
+        
+        # If pickup time is after dropoff time, that's an error in our algorithm
+        # In this case, fall back to a reasoned approach
+        if pickup_time >= dropoff_time:
+            raise ValueError("Pickup time calculation error")
             
-            # Get passenger count for this carpool
-            passenger_count = db.execute('''
-                SELECT COUNT(*) as count
-                FROM carpool_passengers
-                WHERE carpool_id = ?
-            ''', (carpool_id,)).fetchone()['count']
+    except Exception as e:
+        print(f"Error calculating precise pickup/dropoff times: {e}")
+        # Fall back to a better estimation method
+        # Instead of using thirds, let's calculate based on the actual proportion of the journey
+        
+        # Get distances from origin to each point and from each point to destination
+        try:
+            # Calculate distance from origin to pickup
+            origin_to_pickup_dist = gmaps.distance_matrix(
+                carpool_origin, 
+                pickup_location, 
+                mode="driving"
+            )['rows'][0]['elements'][0]['distance']['value']
             
-            # Parse any JSON data stored in misc_data
-            misc_data = {}
-            if row['misc_data']:
-                try:
-                    misc_data = json.loads(row['misc_data'])
-                except json.JSONDecodeError:
-                    misc_data = {}
+            # Calculate distance from pickup to dropoff
+            pickup_to_dropoff_dist = gmaps.distance_matrix(
+                pickup_location, 
+                dropoff_location, 
+                mode="driving"
+            )['rows'][0]['elements'][0]['distance']['value']
             
-            carpools.append({
-                'carpool_id': row['carpool_id'],
-                'driver': {
-                    'id': row['driver_id'],
-                    'username': row['driver_username'],
-                    'given_name': row['given_name'] or '',
-                    'surname': row['surname'] or '',
-                    'full_name': f"{row['given_name'] or ''} {row['surname'] or ''}".strip()
-                },
-                'route': {
-                    'origin': row['route_origin'],
-                    'destination': row['route_destination'],
-                    'arrive_by': row['arrive_by'],
-                    'leave_earliest': row['leave_earliest']
-                },
-                'vehicle': {
-                    'make': row['make'] or '',
-                    'model': row['model'] or '',
-                    'year': row['year'] or '',
-                    'license_plate': row['license_plate'] or '',
-                    'full_description': f"{row['year'] or ''} {row['make'] or ''} {row['model'] or ''}".strip()
-                },
-                'capacity': {
-                    'max': row['max_capacity'] or row['carpool_capacity'] or 0,
-                    'current': passenger_count
-                },
-                'created_at': row['created_at'],
-                'misc_data': misc_data
+            # Calculate distance from origin to destination (direct)
+            origin_to_dest_dist = gmaps.distance_matrix(
+                carpool_origin, 
+                carpool_destination, 
+                mode="driving"
+            )['rows'][0]['elements'][0]['distance']['value']
+            
+            # Calculate proportions of the journey
+            pickup_proportion = origin_to_pickup_dist / origin_to_dest_dist
+            dropoff_proportion = (origin_to_pickup_dist + pickup_to_dropoff_dist) / origin_to_dest_dist
+            
+            # Limit proportions to valid range
+            pickup_proportion = max(0.1, min(0.9, pickup_proportion))
+            dropoff_proportion = max(pickup_proportion + 0.1, min(0.95, dropoff_proportion))
+            
+            # Calculate times based on these proportions
+            pickup_time_seconds = total_duration_seconds * pickup_proportion
+            dropoff_time_seconds = total_duration_seconds * dropoff_proportion
+            
+        except Exception as e:
+            print(f"Error calculating distance-based proportions: {e}")
+            # If all fails, use a more reasonable default
+            pickup_time_seconds = total_duration_seconds * 0.25  # 25% of the way
+            dropoff_time_seconds = total_duration_seconds * 0.75  # 75% of the way
+        
+        pickup_time = driver_earliest_departure + timedelta(seconds=pickup_time_seconds)
+        dropoff_time = driver_earliest_departure + timedelta(seconds=dropoff_time_seconds)
+    
+    # Calculate estimated arrival time at carpool destination with detour
+    estimated_arrival = driver_earliest_departure + timedelta(seconds=total_duration_seconds)
+    
+    # Prepare the route information to return
+    route_info = {
+        'pickup_location': pickup_location,
+        'dropoff_location': dropoff_location,
+        'arrival_date': arrival_date,
+        'pickup_distance': round(distance_detour / 2, 1),  # Rough estimate of pickup distance
+        'dropoff_distance': round(distance_detour / 2, 1),  # Rough estimate of dropoff distance
+        'total_distance': round(total_distance, 1),  # Total route distance in miles
+        'original_distance': round(original_distance, 1),  # Original carpool route distance in miles
+        'distance_detour': round(distance_detour, 1),  # Extra distance added by the detour in miles
+        'total_duration': round(total_duration, 1),  # Total route duration in minutes
+        'original_duration': round(original_duration, 1),  # Original carpool route duration in minutes
+        'duration_detour': round(duration_detour, 1),  # Extra time added by the detour in minutes
+        'pickup_time': pickup_time.strftime("%H:%M"),  # Estimated pickup time
+        'dropoff_time': dropoff_time.strftime("%H:%M"),  # Estimated dropoff time
+        'new_departure_time': driver_earliest_departure.strftime("%H:%M"),  # New departure time
+        'estimated_arrival': estimated_arrival.strftime("%H:%M"),  # Estimated arrival time at final destination
+        'passenger_count': len(carpool.get('passengers', [])),  # Number of existing passengers
+        'total_stops': len(new_waypoints)  # Total number of stops in the route
+    }
+    
+    # Only check viability if filters were provided
+    if filters:
+        # Check if this would exceed any time constraints
+        is_viable = True
+        viability_issues = []
+        
+        # Check passenger time constraints for existing passengers
+        for constraint in time_constraints:
+            if constraint['type'] == 'passenger' and constraint['latest_arrival']:
+                if constraint['latest_arrival'] < dropoff_time:
+                    is_viable = False
+                    viability_issues.append(
+                        f"Would conflict with {constraint['name']}'s latest arrival time of {constraint['latest_arrival'].strftime('%H:%M')}"
+                    )
+        
+        # Get user's earliest pickup time from filters
+        user_earliest_pickup = None
+        if filters.get('earliest_pickup') and arrival_date:
+            try:
+                earliest_pickup_str = filters.get('earliest_pickup')
+                if ':' in earliest_pickup_str:
+                    date_obj = datetime.strptime(arrival_date, "%Y-%m-%d")
+                    time_obj = datetime.strptime(earliest_pickup_str, "%H:%M")
+                    user_earliest_pickup = datetime.combine(date_obj.date(), time_obj.time())
+            except ValueError as e:
+                print(f"Error parsing earliest pickup time: {e}")
+        
+        # Get user's latest arrival time from filters
+        user_latest_arrival = None
+        if filters.get('latest_arrival') and arrival_date:
+            try:
+                latest_arrival_str = filters.get('latest_arrival')
+                if ':' in latest_arrival_str:
+                    date_obj = datetime.strptime(arrival_date, "%Y-%m-%d")
+                    time_obj = datetime.strptime(latest_arrival_str, "%H:%M")
+                    user_latest_arrival = datetime.combine(date_obj.date(), time_obj.time())
+            except ValueError as e:
+                print(f"Error parsing latest arrival time: {e}")
+        
+        # Check if the current calculated pickup time works with user's earliest pickup time
+        needs_adjusted_departure = False
+        adjusted_departure_time = driver_earliest_departure
+        
+        if user_earliest_pickup and pickup_time < user_earliest_pickup:
+            # Instead of marking as not viable, calculate a new departure time that would work
+            time_difference = (user_earliest_pickup - pickup_time).total_seconds()
+            adjusted_departure_time = driver_earliest_departure + timedelta(seconds=time_difference)
+            needs_adjusted_departure = True
+        
+        # Recalculate arrival time with the adjusted departure time
+        adjusted_arrival_time = adjusted_departure_time + timedelta(seconds=total_duration_seconds)
+        
+        # Check if the adjusted arrival time would still meet the driver's latest arrival constraint
+        if driver_latest_arrival and adjusted_arrival_time > driver_latest_arrival:
+            is_viable = False
+            viability_issues.append(
+                f"With your earliest pickup time of {user_earliest_pickup.strftime('%H:%M')}, " + 
+                f"the trip would arrive after driver's latest arrival time of {driver_latest_arrival.strftime('%H:%M')}"
+            )
+        elif needs_adjusted_departure:
+            # Update the route info with adjusted times
+            pickup_time = user_earliest_pickup
+            dropoff_time = pickup_time + timedelta(seconds=pickup_to_dropoff_seconds)
+            
+            route_info.update({
+                'pickup_time': pickup_time.strftime("%H:%M"),
+                'dropoff_time': dropoff_time.strftime("%H:%M"),
+                'new_departure_time': adjusted_departure_time.strftime("%H:%M"),
+                'estimated_arrival': adjusted_arrival_time.strftime("%H:%M"),
+                'adjusted_departure': True  # Flag to indicate we adjusted the departure time
             })
         
-        return carpools
-            
+        # Check if the dropoff time works with user's latest arrival constraint
+        if user_latest_arrival and dropoff_time > user_latest_arrival:
+            is_viable = False
+            viability_issues.append(
+                f"Dropoff time {dropoff_time.strftime('%H:%M')} is after your latest acceptable time {user_latest_arrival.strftime('%H:%M')}"
+            )
+        
+        route_info['is_viable'] = is_viable
+        route_info['viability_issues'] = viability_issues if not is_viable else []
+    
+    return route_info
+
+# Setup Google Maps client
+def get_gmaps_client():
+    """Get a Google Maps client instance with API key"""
+    api_key = current_app.config.get('GOOGLE_MAPS_API_KEY')
+    if not api_key:
+        raise ValueError("Google Maps API key not configured")
+    return googlemaps.Client(key=api_key)
+
+def calculate_route(gmaps, origin, destination, waypoints=None, departure_time=None):
+    """
+    Calculate a route between origin and destination, with optional waypoints
+    
+    Args:
+        gmaps: Google Maps client instance
+        origin: Origin address or coordinates
+        destination: Destination address or coordinates
+        waypoints: List of waypoints to include in the route
+        departure_time: Departure time for the route
+        
+    Returns:
+        Route information including distance, duration, steps
+    """
+    try:
+        # Set departure time to now if not specified or if it's in the past
+        now = datetime.now()
+        if departure_time is None or departure_time < now:
+            departure_time = now
+        
+        # Make directions API call
+        directions_result = gmaps.directions(
+            origin,
+            destination,
+            mode="driving",
+            waypoints=waypoints,
+            optimize_waypoints=True,
+            departure_time=departure_time
+        )
+        
+        if not directions_result:
+            return None
+        
+        return directions_result[0]
+    except Exception as e:
+        print(f"Error calculating route: {e}")
+        return None
+
+def remove_passenger_from_carpool(carpool_id: int, passenger_id: int) -> Dict:
+    """
+    Remove a passenger from a carpool.
+    
+    This can be called by either:
+    - The passenger themselves (leaving the carpool)
+    - The driver of the carpool (kicking the passenger)
+    
+    Args:
+        carpool_id: ID of the carpool
+        passenger_id: ID of the passenger to remove
+        
+    Returns:
+        Dictionary containing result information:
+            - success: Boolean indicating if operation was successful
+            - message: Descriptive message
+    """
+    db = get_db()
+    
+    try:
+        # First check if the passenger is actually in this carpool
+        check_query = "SELECT passenger_id FROM carpool_passengers WHERE carpool_id = ? AND passenger_id = ?"
+        existing = db.execute(check_query, (carpool_id, passenger_id)).fetchone()
+        
+        if not existing:
+            return {
+                'success': False,
+                'message': 'Passenger is not in this carpool'
+            }
+        
+        # Remove the passenger from the carpool
+        delete_query = "DELETE FROM carpool_passengers WHERE carpool_id = ? AND passenger_id = ?"
+        db.execute(delete_query, (carpool_id, passenger_id))
+        db.commit()
+        
+        return {
+            'success': True,
+            'message': 'Passenger removed from carpool successfully'
+        }
+        
     except sqlite3.Error as e:
-        print(f"Error getting carpool list: {e}")
+        db.rollback()
+        print(f"Error removing passenger from carpool: {e}")
+        return {
+            'success': False,
+            'message': f'Database error: {str(e)}'
+        }
+
+def get_user_role_in_carpool(carpool_id: int, user_id: int) -> Dict:
+    """
+    Determine a user's role in a carpool (driver, passenger, or none).
+    
+    Args:
+        carpool_id: ID of the carpool
+        user_id: ID of the user
+        
+    Returns:
+        Dictionary containing role information:
+            - is_driver: Boolean indicating if user is the driver
+            - is_passenger: Boolean indicating if user is a passenger
+            - carpool_exists: Boolean indicating if the carpool exists
+    """
+    db = get_db()
+    
+    try:
+        # Check if carpool exists
+        carpool_query = "SELECT driver_id FROM carpool_list WHERE carpool_id = ?"
+        carpool = db.execute(carpool_query, (carpool_id,)).fetchone()
+        
+        if not carpool:
+            return {
+                'is_driver': False,
+                'is_passenger': False,
+                'carpool_exists': False
+            }
+        
+        # Check if user is the driver
+        is_driver = carpool['driver_id'] == user_id
+        
+        # Check if user is a passenger
+        passenger_query = "SELECT passenger_id FROM carpool_passengers WHERE carpool_id = ? AND passenger_id = ?"
+        passenger = db.execute(passenger_query, (carpool_id, user_id)).fetchone()
+        is_passenger = passenger is not None
+        
+        return {
+            'is_driver': is_driver,
+            'is_passenger': is_passenger,
+            'carpool_exists': True
+        }
+        
+    except sqlite3.Error as e:
+        print(f"Error checking user role in carpool: {e}")
+        return {
+            'is_driver': False,
+            'is_passenger': False,
+            'carpool_exists': False,
+            'error': str(e)
+        }
+
+def get_user_carpools(user_id: int, role_filter: str = 'either', arrival_date: str = None, hide_past: bool = True) -> List[Dict]:
+    """
+    Get carpools where the user is either a driver or a passenger, with optional filtering.
+    
+    Args:
+        user_id: ID of the user
+        role_filter: Filter by user's role - 'driver', 'passenger', or 'either' (default)
+        arrival_date: Filter by arrival date (YYYY-MM-DD format)
+        hide_past: If True, hide carpools with arrival time in the past
+        
+    Returns:
+        List of carpools where the user has the specified role
+    """
+    db = get_db()
+    carpools = []
+    
+    try:
+        # Current datetime for filtering past carpools
+        current_datetime = datetime.now()
+        
+        # Initialize query parameters
+        params = []
+        
+        # Build the query based on role_filter
+        if role_filter == 'driver' or role_filter == 'either':
+            # Get carpools where user is the driver
+            driver_query = '''
+                SELECT carpool_id 
+                FROM carpool_list 
+                WHERE driver_id = ?
+            '''
+            
+            # Add filtering for past carpools if required
+            if hide_past:
+                driver_query += '''
+                    AND (
+                        (arrive_by IS NULL) OR 
+                        (arrive_by = '') OR
+                        (
+                            arrive_by IS NOT NULL AND
+                            (
+                                strftime('%Y-%m-%d %H:%M', 
+                                    substr(arrive_by, 7, 4) || '-' || 
+                                    substr(arrive_by, 1, 2) || '-' || 
+                                    substr(arrive_by, 4, 2) || ' ' || 
+                                    substr(arrive_by, 12)
+                                ) > strftime('%Y-%m-%d %H:%M', 'now')
+                            )
+                        )
+                    )
+                '''
+                
+            # Add filtering for specific arrival date if provided
+            if arrival_date:
+                driver_query += ''' 
+                    AND (
+                        substr(arrive_by, 7, 4) || '-' || 
+                        substr(arrive_by, 1, 2) || '-' || 
+                        substr(arrive_by, 4, 2) = ?
+                    )
+                '''
+                params = [user_id, arrival_date]
+            else:
+                params = [user_id]
+                
+            driver_results = db.execute(driver_query, params).fetchall()
+            
+            # Add the driver carpools to the results
+            for row in driver_results:
+                carpool = get_carpool_listing(row['carpool_id'])
+                if carpool:
+                    carpool['user_role'] = 'driver'
+                    carpools.append(carpool)
+        
+        if role_filter == 'passenger' or role_filter == 'either':
+            # Get carpools where user is a passenger
+            passenger_query = '''
+                SELECT cp.carpool_id 
+                FROM carpool_passengers cp
+                JOIN carpool_list cl ON cp.carpool_id = cl.carpool_id
+                WHERE cp.passenger_id = ?
+            '''
+            
+            # Add filtering for past carpools if required
+            if hide_past:
+                passenger_query += '''
+                    AND (
+                        (cl.arrive_by IS NULL) OR 
+                        (cl.arrive_by = '') OR
+                        (
+                            cl.arrive_by IS NOT NULL AND
+                            (
+                                strftime('%Y-%m-%d %H:%M', 
+                                    substr(cl.arrive_by, 7, 4) || '-' || 
+                                    substr(cl.arrive_by, 1, 2) || '-' || 
+                                    substr(cl.arrive_by, 4, 2) || ' ' || 
+                                    substr(cl.arrive_by, 12)
+                                ) > strftime('%Y-%m-%d %H:%M', 'now')
+                            )
+                        )
+                    )
+                '''
+                
+            # Add filtering for specific arrival date if provided
+            if arrival_date:
+                passenger_query += '''
+                    AND (
+                        substr(cl.arrive_by, 7, 4) || '-' || 
+                        substr(cl.arrive_by, 1, 2) || '-' || 
+                        substr(cl.arrive_by, 4, 2) = ?
+                    )
+                '''
+                params = [user_id, arrival_date]
+            else:
+                params = [user_id]
+                
+            passenger_results = db.execute(passenger_query, params).fetchall()
+            
+            # Add the passenger carpools to the results
+            for row in passenger_results:
+                carpool = get_carpool_listing(row['carpool_id'])
+                if carpool:
+                    carpool['user_role'] = 'passenger'
+                    carpools.append(carpool)
+        
+        # Sort carpools by arrival date (earliest first)
+        def get_arrival_datetime(carpool):
+            arrive_by = carpool['route']['arrive_by']
+            if not arrive_by:
+                return datetime.max
+            try:
+                # Parse MM-DD-YYYY;HH:MM format
+                parts = arrive_by.split(';')
+                if len(parts) != 2:
+                    return datetime.max
+                    
+                date_part = parts[0]
+                time_part = parts[1]
+                
+                date_parts = date_part.split('-')
+                if len(date_parts) != 3:
+                    return datetime.max
+                    
+                month, day, year = int(date_parts[0]), int(date_parts[1]), int(date_parts[2])
+                
+                time_parts = time_part.split(':')
+                if len(time_parts) != 2:
+                    return datetime.max
+                    
+                hour, minute = int(time_parts[0]), int(time_parts[1])
+                
+                return datetime(year, month, day, hour, minute)
+            except (ValueError, IndexError):
+                return datetime.max
+                
+        carpools.sort(key=get_arrival_datetime)
+        
+        return carpools
+        
+    except sqlite3.Error as e:
+        print(f"Error getting user carpools: {e}")
         return []
 

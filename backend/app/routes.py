@@ -6,7 +6,8 @@ from app.database import (
     get_quiz_by_id, save_quiz_results, get_specific_user_data, init_app, _substitute_context,
     reserve_carpool_listing_id, get_full_carpool_details, get_public_carpool_details,
     check_user_missing_info, get_options_from_universal_id, get_user_full_profile, delete_car,
-    get_carpool_list
+    get_carpool_list, add_passenger_to_carpool, get_user_role_in_carpool, remove_passenger_from_carpool,
+    get_user_carpools
 )
 from flask_jwt_extended import (
     JWTManager, jwt_required, create_access_token, get_jwt_identity
@@ -499,6 +500,16 @@ def get_carpools():
     # Extract filters from request parameters
     filters = {}
     
+    # Get location and date filters
+    if request.args.get('pickup_location'):
+        filters['pickup_location'] = request.args.get('pickup_location')
+    
+    if request.args.get('dropoff_location'):
+        filters['dropoff_location'] = request.args.get('dropoff_location')
+    
+    if request.args.get('arrival_date'):
+        filters['arrival_date'] = request.args.get('arrival_date')
+    
     # If min seats specified
     if request.args.get('min_seats'):
         try:
@@ -506,23 +517,302 @@ def get_carpools():
         except ValueError:
             pass
     
-    # If earliest departure specified
-    if request.args.get('earliest_departure'):
-        filters['earliest_departure'] = request.args.get('earliest_departure')
+    # If earliest pickup specified
+    if request.args.get('earliest_pickup'):
+        filters['earliest_pickup'] = request.args.get('earliest_pickup')
     
     # If latest arrival specified
     if request.args.get('latest_arrival'):
         filters['latest_arrival'] = request.args.get('latest_arrival')
     
-    # Get max distance if specified
-    if request.args.get('max_distance'):
-        try:
-            filters['max_distance'] = float(request.args.get('max_distance'))
-        except ValueError:
-            pass
-    
     # Get filtered carpools from database
     carpools = get_carpool_list(filters if filters else None)
+    
+    return jsonify({
+        'success': True,
+        'carpools': carpools
+    })
+
+@app.route('/api/carpool/join', methods=['POST'])
+@jwt_required()
+def join_carpool():
+    """Join an existing carpool as a passenger"""
+    # Get current user ID from JWT token
+    current_user_id = int(get_jwt_identity())
+    
+    # Get data from request body
+    data = request.get_json()
+    if not data or 'carpool_id' not in data:
+        return jsonify({
+            'success': False,
+            'error': 'missing_data',
+            'message': 'Carpool ID is required'
+        }), 400
+    
+    # Extract data from request
+    carpool_id = data.get('carpool_id')
+    pickup_location = data.get('pickup_location')
+    dropoff_location = data.get('dropoff_location')
+    
+    # Build filters from request data
+    filters = {}
+    
+    # Include pickup and dropoff locations in filters
+    if pickup_location:
+        filters['pickup_location'] = pickup_location
+    
+    if dropoff_location:
+        filters['dropoff_location'] = dropoff_location
+    
+    # Include travel date if provided
+    if 'arrival_date' in data:
+        filters['arrival_date'] = data.get('arrival_date')
+    
+    # Include time constraints if provided
+    if 'earliest_pickup' in data:
+        filters['earliest_pickup'] = data.get('earliest_pickup')
+    
+    if 'latest_arrival' in data:
+        filters['latest_arrival'] = data.get('latest_arrival')
+    
+    # Add the passenger to the carpool
+    result = add_passenger_to_carpool(
+        carpool_id=carpool_id,
+        passenger_id=current_user_id,
+        pickup_location=pickup_location,
+        dropoff_location=dropoff_location,
+        filters=filters
+    )
+    
+    if result['success']:
+        return jsonify(result), 200
+    else:
+        return jsonify(result), 400
+
+@app.route('/api/carpool/user-role', methods=['GET'])
+@jwt_required()
+def get_user_carpool_role():
+    """Get the current user's role in a specific carpool"""
+    # Get current user ID from JWT token
+    current_user_id = int(get_jwt_identity())
+    
+    # Get carpool_id from query parameters
+    carpool_id = request.args.get('carpool_id')
+    
+    if not carpool_id:
+        return jsonify({'error': 'Carpool ID is required'}), 400
+    
+    try:
+        carpool_id = int(carpool_id)
+    except ValueError:
+        return jsonify({'error': 'Invalid carpool ID format'}), 400
+    
+    # Get user's role in the carpool
+    role = get_user_role_in_carpool(carpool_id, current_user_id)
+    
+    if not role['carpool_exists']:
+        return jsonify({'error': 'Carpool not found'}), 404
+    
+    return jsonify({
+        'success': True,
+        'is_driver': role['is_driver'],
+        'is_passenger': role['is_passenger']
+    })
+
+@app.route('/api/carpool/remove-passenger', methods=['POST'])
+@jwt_required()
+def remove_passenger():
+    """Remove a passenger from a carpool (can be called by driver to kick or by passenger to leave)"""
+    # Get current user ID from JWT token
+    current_user_id = int(get_jwt_identity())
+    
+    # Get data from request body
+    data = request.get_json()
+    if not data or 'carpool_id' not in data:
+        return jsonify({'error': 'Carpool ID is required'}), 400
+    
+    try:
+        carpool_id = int(data['carpool_id'])
+    except ValueError:
+        return jsonify({'error': 'Invalid carpool ID format'}), 400
+    
+    # Get passenger ID from request or use current user if not specified
+    passenger_id = data.get('passenger_id', current_user_id)
+    try:
+        passenger_id = int(passenger_id)
+    except ValueError:
+        return jsonify({'error': 'Invalid passenger ID format'}), 400
+    
+    # Check if user has permission to remove this passenger
+    role = get_user_role_in_carpool(carpool_id, current_user_id)
+    
+    if not role['carpool_exists']:
+        return jsonify({'error': 'Carpool not found'}), 404
+    
+    # Allow removal only if:
+    # 1. User is removing themselves (leaving) OR
+    # 2. User is the driver (kicking someone else)
+    if passenger_id != current_user_id and not role['is_driver']:
+        return jsonify({'error': 'You do not have permission to remove this passenger'}), 403
+    
+    # Proceed with removing the passenger
+    result = remove_passenger_from_carpool(carpool_id, passenger_id)
+    
+    if not result['success']:
+        return jsonify({
+            'success': False,
+            'message': result['message']
+        }), 400
+    
+    # Get updated carpool information
+    carpool = get_full_carpool_details(carpool_id, current_user_id)
+    
+    return jsonify({
+        'success': True,
+        'message': result['message'],
+        'carpool': carpool
+    })
+
+@app.route('/api/carpool/route-map', methods=['GET'])
+@jwt_required()
+def get_route_map_data():
+    """Get route map data for a carpool with all waypoints for Google Maps integration"""
+    # Get current user ID from JWT token
+    current_user_id = int(get_jwt_identity())
+    
+    # Get carpool_id from query parameters
+    carpool_id = request.args.get('carpool_id')
+    
+    if not carpool_id:
+        return jsonify({'error': 'Carpool ID is required'}), 400
+    
+    try:
+        carpool_id = int(carpool_id)
+    except ValueError:
+        return jsonify({'error': 'Invalid carpool ID format'}), 400
+    
+    # Check if user has permission to view this carpool's route
+    role = get_user_role_in_carpool(carpool_id, current_user_id)
+    
+    if not role['carpool_exists']:
+        return jsonify({'error': 'Carpool not found'}), 404
+    
+    # Only allow viewing if user is driver or passenger
+    if not role['is_driver'] and not role['is_passenger']:
+        return jsonify({'error': 'You do not have permission to view this carpool route'}), 403
+    
+    # Get carpool details to extract route information
+    carpool_details = get_full_carpool_details(carpool_id, current_user_id)
+    
+    if not carpool_details:
+        return jsonify({'error': 'Failed to retrieve carpool details'}), 500
+    
+    try:
+        # Initialize Google Maps client
+        from app.database import get_gmaps_client
+        gmaps = get_gmaps_client()
+        
+        # Extract origin and destination addresses
+        origin_address = carpool_details['route']['origin']
+        destination_address = carpool_details['route']['destination']
+        
+        print(f"Geocoding origin address: {origin_address}")
+        
+        # Get geocoded origin and destination
+        origin_geocode = gmaps.geocode(origin_address)
+        if not origin_geocode:
+            print(f"Failed to geocode origin address: {origin_address}")
+            return jsonify({'error': f'Failed to geocode origin address: {origin_address}'}), 500
+            
+        print(f"Geocoding destination address: {destination_address}")
+        destination_geocode = gmaps.geocode(destination_address)
+        if not destination_geocode:
+            print(f"Failed to geocode destination address: {destination_address}")
+            return jsonify({'error': f'Failed to geocode destination address: {destination_address}'}), 500
+        
+        print(f"Successfully geocoded addresses")
+        
+        # Extract coordinates
+        origin_location = {
+            'lat': origin_geocode[0]['geometry']['location']['lat'],
+            'lng': origin_geocode[0]['geometry']['location']['lng']
+        }
+        
+        destination_location = {
+            'lat': destination_geocode[0]['geometry']['location']['lat'],
+            'lng': destination_geocode[0]['geometry']['location']['lng']
+        }
+        
+        # Get waypoints from passengers' pickup and dropoff locations
+        waypoints = []
+        
+        print(f"Processing {len(carpool_details['passengers'])} passengers for waypoints")
+        
+        for passenger in carpool_details['passengers']:
+            # Add pickup location
+            if passenger['pickup_location']:
+                print(f"Geocoding pickup: {passenger['pickup_location']}")
+                pickup_geocode = gmaps.geocode(passenger['pickup_location'])
+                if pickup_geocode:
+                    waypoints.append({
+                        'lat': pickup_geocode[0]['geometry']['location']['lat'],
+                        'lng': pickup_geocode[0]['geometry']['location']['lng'],
+                        'label': f"Pickup: {passenger['full_name']}"
+                    })
+                else:
+                    print(f"Failed to geocode pickup location: {passenger['pickup_location']}")
+            
+            # Add dropoff location
+            if passenger['dropoff_location']:
+                print(f"Geocoding dropoff: {passenger['dropoff_location']}")
+                dropoff_geocode = gmaps.geocode(passenger['dropoff_location'])
+                if dropoff_geocode:
+                    waypoints.append({
+                        'lat': dropoff_geocode[0]['geometry']['location']['lat'],
+                        'lng': dropoff_geocode[0]['geometry']['location']['lng'],
+                        'label': f"Dropoff: {passenger['full_name']}"
+                    })
+                else:
+                    print(f"Failed to geocode dropoff location: {passenger['dropoff_location']}")
+        
+        return jsonify({
+            'success': True,
+            'route': {
+                'origin': origin_location,
+                'destination': destination_location,
+                'waypoints': waypoints
+            }
+        })
+        
+    except Exception as e:
+        print(f"Error generating route map data: {e}")
+        return jsonify({'error': f'An error occurred: {str(e)}'}), 500
+    
+@app.route('/api/carpools/my-carpools', methods=['GET'])
+@jwt_required()
+def get_my_carpools():
+    """Get carpools where the current user is either a driver or passenger, with optional filtering"""
+    # Get current user ID from JWT token
+    current_user_id = int(get_jwt_identity())
+    
+    # Extract filters from request parameters
+    role_filter = request.args.get('role', 'either')
+    if role_filter not in ['driver', 'passenger', 'either']:
+        role_filter = 'either'  # Default to 'either' if invalid role provided
+    
+    arrival_date = request.args.get('arrival_date')
+    
+    # Convert hide_past from string to boolean
+    hide_past_param = request.args.get('hide_past', 'true')
+    hide_past = hide_past_param.lower() == 'true'
+    
+    # Get user's carpools with filtering
+    carpools = get_user_carpools(
+        user_id=current_user_id,
+        role_filter=role_filter,
+        arrival_date=arrival_date,
+        hide_past=hide_past
+    )
     
     return jsonify({
         'success': True,

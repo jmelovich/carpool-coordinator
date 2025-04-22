@@ -10,6 +10,7 @@ import CarpoolListingPage from './CarpoolListingPage';
 import LandingPage from './LandingPage';
 import DynamicQuizPage from './DynamicQuizPage';
 import UserPage from './UserPage';
+import MyCarpools from './MyCarpools';
 import Cookies from 'js-cookie';
 
 function App() {
@@ -102,7 +103,7 @@ function App() {
             path="/carpool"
             element={
               isAuthenticated ? (
-                <MainCarpoolPage />
+                <MainCarpoolPage onLogout={handleLogout} />
               ) : (
                 <Navigate to="/" replace />
               )
@@ -111,9 +112,17 @@ function App() {
           <Route
             path="/carpool-listing"
             element={
-
                 <CarpoolListingPage />
-
+            }
+          />
+          <Route
+            path="/my-carpools"
+            element={
+              isAuthenticated ? (
+                <MyCarpools />
+              ) : (
+                <Navigate to="/" replace />
+              )
             }
           />
           <Route

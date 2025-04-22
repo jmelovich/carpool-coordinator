@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import './styles/styles.css';
 import Cookies from 'js-cookie';
+import background from './assets/register_backdrop.png';
+import './styles/register.css';
 
 function Register({ setIsAuthenticated }) {
   const navigate = useNavigate();
@@ -10,12 +11,10 @@ function Register({ setIsAuthenticated }) {
     email: '',
     password: ''
   });
-
   const [message, setMessage] = useState(null);
   const [passwordError, setPasswordError] = useState('');
 
   const validatePassword = (password) => {
-    // min 8 characters, one letter, one number - order should not matter (widely used format)
     const regex = /^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]{8,}$/;
     return regex.test(password);
   };
@@ -36,86 +35,109 @@ function Register({ setIsAuthenticated }) {
 
     const response = await fetch('http://127.0.0.1:5000/api/auth/register', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(formData),
     });
 
     const data = await response.json();
     if (response.ok) {
-      console.log('Success! Returned token is:', data.access_token);
-      setMessage({ type: "success", text: 'User registered successfully!' });
-      
-      // Store the token and update authentication state
       Cookies.set('access_token', data.access_token);
       setIsAuthenticated(true);
-      
-      // Redirect to homepage
+      setMessage({ type: "success", text: 'User registered successfully!' });
       navigate('/home');
     } else {
-      console.log('Error:', data.error);
       setMessage({ type: "error", text: data.error });
     }
   };
 
+  const alertStyle = message?.type === 'success'
+    ? { backgroundColor: '#d1fae5', color: '#065f46' }
+    : { backgroundColor: '#fee2e2', color: '#991b1b' };
+
   return (
-    <div className="mt-6 p-6 bg-[#B2C8BA] rounded-lg shadow-lg w-80">
-      <h2 className="text-xl font-semibold mb-4">Sign Up</h2>
+    <div style={{
+      width: '100vw',
+      minHeight: '100vh',
+      backgroundImage: `url(${background})`,
+      backgroundSize: 'cover',
+      backgroundPosition: 'center',
+      backgroundRepeat: 'no-repeat',
+      display: 'flex',
+      justifyContent: 'flex-start',
+      alignItems: 'center',
+      padding: '30px',
+      paddingLeft: '20vw',
+      paddingRight: '20vh',
+      boxSizing: 'border-box'
+    }}>
+      <div style={{
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: 'rgba(0, 0, 0, 0.25)', // Adjust the 0.4 for more/less darkness
+        zIndex: 1
+      }} />
+      <div style={{
+        position: 'relative',
+        zIndex: 2,
+        backgroundColor: 'rgba(32, 56, 17, 0.95)',
+        borderRadius: '20px',
+        padding: '40px',
+        width: '100%',
+        maxWidth: '400px',
+        boxShadow: '0 4px 20px rgba(0,0,0,0.1)',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'flex-start',
+        justifyContent: 'center',
+        gap: '20px'
+      }}>
+        <h2 className="raleway-text" style={{ fontSize: '28px', margin: '0 auto', padding: '5px'}}>Create a new account</h2>
 
-      {message && (
-        <div className={`alert ${message.type === "success" ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"} p-4 mb-4`}>
-          {message.text}
-        </div>
-      )}
+        {message && (
+          <div style={{ ...alertStyle, padding: '10px 14px', borderRadius: '6px', fontSize: '14px', textAlign: 'center', width: '100%', maxWidth: '400px' }}>
+            {message.text}
+          </div>
+        )}
 
-      <form onSubmit={handleSignup}>
-        <label className="largeLabel" htmlFor="username">
+        <form onSubmit={handleSignup} className="register-form" style={{ gap: '16px' }}>
           <input
-            className="inputBox w-full p-2 mb-2 border rounded"
             type="text"
             name="username"
-            id="username"
-            placeholder="Username"
+            placeholder="USERNAME"
             value={formData.username}
             onChange={handleChange}
+            className="register-input input-white-placeholder"
             required
           />
-        </label>
-        <label className="largeLabel" htmlFor="email">
           <input
-            className="inputBox w-full p-2 mb-2 border rounded"
             type="email"
             name="email"
-            id="email"
-            placeholder="Email"
+            placeholder="EMAIL"
             value={formData.email}
             onChange={handleChange}
+            className="register-input input-white-placeholder"
             required
           />
-        </label>
-        <label className="largeLabel" htmlFor="password">
           <input
-            className="inputBox w-full p-2 mb-4 border rounded"
             type="password"
             name="password"
-            id="password"
-            placeholder="Password"
+            placeholder="PASSWORD"
             value={formData.password}
             onChange={handleChange}
+            className="register-input input-white-placeholder"
             required
           />
-        </label>
 
-        {passwordError && <p className="text-red-600">{passwordError}</p>}
+          {passwordError && <p className="text-red-500 text-sm text-center">{passwordError}</p>}
 
-        <button
-          type="submit"
-          className="w-full p-2 bg-[#228B22] text-white rounded-lg hover:bg-[#1c6e1c]"
-        >
-          Sign Up
-        </button>
-      </form>
+          <button type="submit" className="form-button">
+            Sign Up
+          </button>
+        </form>
+      </div>
     </div>
   );
 }
