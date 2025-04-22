@@ -17,14 +17,11 @@ try:
     from flask_bcrypt import generate_password_hash
 except ImportError:
     print("Warning: Flask-Bcrypt not installed. Hashing will fail.")
-    # Define a dummy hash function if needed for testing without bcrypt
     def generate_password_hash(pwd): return f"hashed_{pwd}".encode('utf-8')
 
 from flask import current_app, g # Import Flask g and current_app
 
 # --- Configuration ---
-# Best practice: Define DATABASE path in Flask app config.
-# Fallback using Path(__file__) for locating the DB relative to this file.
 DATABASE = Path(__file__).parent / "carpool.db"
 QUIZZES_JSON_PATH = Path(__file__).parent / "quizzes.json"
 DB_TIMEOUT = 20.0  # Timeout in seconds for lock waits
@@ -557,14 +554,6 @@ def get_carpool_list(filters: Dict = None) -> List[Dict]:
                     )
                 '''
                 params.append(filters['arrival_date'])
-            
-            # Filter by minimum available seats
-            if 'min_seats' in filters and filters['min_seats']:
-                # In a real implementation, we'd join with passengers and calculate dynamically
-                # For simplicity in this MVP, we'll filter after fetching
-                pass
-            
-            # Filter by earliest pickup time and latest arrival is handled in route_info calculation
         
         # Execute the query
         carpool_ids = db.execute(query, params).fetchall()
@@ -1196,8 +1185,7 @@ def _substitute_context(text: str, context: Optional[Dict], empty_string_if_not_
             print(f"Warning: Answer for question {question_id} not found in context")
             return "" if empty_string_if_not_found else text
             
-        # Original functionality for other variables
-        # Prioritize g, then context dict, fallback to original string
+        # if the variable is not an answer, check if it exists in g or context
         val_from_g = g.get(var_name)
         if val_from_g is not None:
              return str(val_from_g)
@@ -1207,7 +1195,6 @@ def _substitute_context(text: str, context: Optional[Dict], empty_string_if_not_
         return "" if empty_string_if_not_found else text
     
     # For embedded variable references within a longer string
-    # Process <answer:qX> references embedded in the text
     def substitute_refs(match):
         var_ref = match.group(0)  # The entire match including <>
         var_name = var_ref[1:-1]  # Remove < and >
@@ -1298,7 +1285,6 @@ def save_data_for_universal_id(universal_id: str, value: Any, context: Dict) -> 
         variable_name = parsed['variable_name']
         # Update context with the new value
         context[variable_name] = value
-        # Also update Flask g for the current request if available
         try:
             setattr(g, variable_name, value)
         except RuntimeError:
@@ -1362,7 +1348,6 @@ def save_data_for_universal_id(universal_id: str, value: Any, context: Dict) -> 
                 insert_query = f"INSERT INTO \"{parsed['table_name']}\" (\"{parsed['key_column']}\", \"{parsed['data_column']}\") VALUES (?, ?)"
                 try: execute_with_retry(conn, insert_query, (key_value, actual_value))
                 except sqlite3.Error as e: print(f"Error INSERTING new row for UID {universal_id}: {e}"); return False
-            # Rely on close_db to commit
 
         return True
     except sqlite3.Error as e:
@@ -1411,11 +1396,9 @@ def update_quiz_db():
             execute_with_retry(conn, f"DELETE FROM quizzes WHERE quiz_id IN ({placeholders})", tuple(ids_to_delete))
             deleted_count = len(ids_to_delete)
 
-        # Rely on close_db to commit
         print(f"Quizzes DB update: {inserted_count} inserted, {updated_count} updated, {deleted_count} deleted.")
     except sqlite3.Error as e:
         print(f"Error updating quizzes database: {e}")
-        # Rely on close_db to rollback
 
 def get_quiz_by_id(quiz_id: str) -> Optional[Dict]:
     """Retrieve the full quiz data (as dict) for a given quiz ID."""
@@ -1699,7 +1682,6 @@ def save_quiz_results(user_id: int, results: Dict, context: Dict) -> Dict:
         print(f"Processing {len(deferred_ops)} deferred operations")
         # Track which operations still couldn't be processed in this round
         still_deferred = []
-        
         # Keep track of operations with variables that can never be resolved in this session
         unresolvable_ops = []
         
@@ -1758,7 +1740,6 @@ def save_quiz_results(user_id: int, results: Dict, context: Dict) -> Dict:
             operations_results['message'] = f'All results saved successfully. Skipped {len(skipped_ids)} operations with unresolved variables or empty IDs.'
         else:
             operations_results['message'] = 'All results saved successfully.'
-    # Rely on close_db to commit/rollback
 
     close_db()
     return operations_results
@@ -2225,20 +2206,9 @@ def get_route_information(carpool: Dict, filters: Dict = None) -> Dict:
     # Calculate detour information (how much the new route deviates from original)
     distance_detour = total_distance - original_distance
     duration_detour = total_duration - original_duration
-    
-    # Analyze the route to determine pickup and dropoff times
-    # The previous approach didn't work correctly, so let's implement a better one
-    # We need a more robust approach that doesn't rely on waypoint indices
-    
-    # Since Google Maps API doesn't directly tell us which legs correspond to which waypoints,
-    # we need to implement a better estimation algorithm
-    
-    # Calculate the user's position in the overall journey
-    # Assuming this is a sequential journey: origin -> waypoints -> destination
-    # We need to analyze the actual locations and their distances
-    
+          
     try:
-        # For more accurate calculation, let's use Google Distance Matrix API to calculate
+        # For accurate calculation, the Google Distance Matrix API is used to calculate
         # the actual distance from origin to user's pickup and from origin to user's dropoff
         origin_to_pickup = gmaps.distance_matrix(
             carpool_origin, 
@@ -2269,15 +2239,15 @@ def get_route_information(carpool: Dict, filters: Dict = None) -> Dict:
         pickup_time = driver_earliest_departure + timedelta(seconds=pickup_time_seconds)
         dropoff_time = driver_earliest_departure + timedelta(seconds=dropoff_time_seconds)
         
-        # If pickup time is after dropoff time, that's an error in our algorithm
-        # In this case, fall back to a reasoned approach
+        # If pickup time is after dropoff time, that's an error
+        # In this case, fall back to a different approach
         if pickup_time >= dropoff_time:
             raise ValueError("Pickup time calculation error")
             
     except Exception as e:
         print(f"Error calculating precise pickup/dropoff times: {e}")
-        # Fall back to a better estimation method
-        # Instead of using thirds, let's calculate based on the actual proportion of the journey
+        # Fall back to a different estimation method
+        # Calculating based on the actual proportion of the journey
         
         # Get distances from origin to each point and from each point to destination
         try:
