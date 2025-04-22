@@ -38,8 +38,8 @@ function RouteMap({ carpoolId, userRole, isModal = false }) {
   });
 
   // Load Google Maps API
-  const { isLoaded: mapsLoaded } = useJsApiLoader({
-    googleMapsApiKey: import.meta.env.APP_GOOGLE_MAP_API_KEY,
+  const { isLoaded, loadError } = useJsApiLoader({
+    googleMapsApiKey: import.meta.env.APP_GOOGLE_MAP_API_KEY || 'AIzaSyC0SI_vabMINqTA9b4mYnjZ069trVujYSo',
     libraries,
   });
 

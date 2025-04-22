@@ -19,7 +19,7 @@ const AddressInput = ({ value, onChange, placeholder }) => {
   const containerRef = useRef(null);
 
   const { isLoaded, loadError } = useJsApiLoader({
-    googleMapsApiKey: import.meta.env.APP_GOOGLE_MAP_API_KEY,
+    googleMapsApiKey: import.meta.env.APP_GOOGLE_MAP_API_KEY || 'AIzaSyC0SI_vabMINqTA9b4mYnjZ069trVujYSo',
     libraries,
   });
 
