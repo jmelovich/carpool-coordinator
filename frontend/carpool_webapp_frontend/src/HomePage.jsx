@@ -118,20 +118,7 @@ function HomePage({ onLogout }) {
             </button>
           </div>
 
-          <div className="bg-[#E9F5F5] p-6 rounded-lg mt-6">
-            <h2 className="text-xl font-semibold text-[#2A9D8F] mb-4">
-              Quiz Page Demo
-            </h2>
-            <p className="text-gray-600 mb-4">
-              This directs to a test quiz that shows every question type. Use this for ease of accessing the quiz page, and working with styling.
-            </p>
-            <button
-              onClick={() => navigate('/quiz?id=test_quiz')}
-              className="px-4 py-2 bg-[#2A9D8F] text-white rounded-lg hover:bg-[#238577]"
-            >
-              Try Sample Quiz
-            </button>
-          </div>
+
         </div>
       </div>
     </div>
