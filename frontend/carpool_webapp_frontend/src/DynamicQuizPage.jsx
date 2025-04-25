@@ -666,7 +666,7 @@ function DynamicQuizPage() {
     <div className="min-h-screen bg-gray-100">
       <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="bg-white rounded-lg shadow-lg p-6">
-          {/* <div className="flex justify-between items-center mb-6">
+          <div className="flex justify-between items-center mb-6">
             <h1 className="text-3xl font-bold text-[#2A9D8F]">
               {quizTitle || "Loading Quiz..."}
             </h1>
@@ -685,9 +685,9 @@ function DynamicQuizPage() {
             <div className="bg-red-100 text-red-800 p-4 mb-4 rounded-lg">
               {error}
             </div>
-          )} */}
+          )}
 
-          {/* <p className="text-gray-600 mb-6">{quizDescription || "Loading description..."}</p> */}
+          <p className="text-gray-600 mb-6">{quizDescription || "Loading description..."}</p>
 
           {questions.length > 0 ? (
             isUserInfoQuiz ? (
